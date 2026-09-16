@@ -14,20 +14,20 @@ input{width:100%;padding:14px;border:1px solid #ddd;border-radius:14px;margin:6p
 .ledger{padding:11px 0;border-bottom:1px solid #eee;display:flex;justify-content:space-between}
 </style></head><body>
 <div id="auth"><div class="logo">PRIVATE<span class="pink">ROOM</span> MODEL</div><div class="authbox">
-<h2>Model Girişi</h2><input id="email" type="email" placeholder="E-posta"><input id="pass" type="password" placeholder="Şifre"><input id="name" placeholder="Yayıncı adı">
-<div class="row"><button class="secondary" onclick="login()">Giriş</button><button class="primary" onclick="signup()">Kayıt ol</button></div>
-<div id="authmsg" class="msg">İlk kayıtta e-posta doğrulaması istenebilir.</div></div></div>
+<h2>Bağlanıyor…</h2>
+<div id="authmsg" class="msg">Model cihaz hesabı hazırlanıyor. E-posta veya şifre gerekmiyor.</div>
+</div></div>
 
 <header><div class="logo">PRIVATE<span class="pink">ROOM</span> MODEL</div><div id="status" class="status">Offline</div></header>
 <div class="wrap">
- <div id="claimCard" class="card hidden"><div class="title">Model hesabını etkinleştir</div><div class="small">Adminin verdiği davet kodunu gir.</div><input id="creatorCode" placeholder="Model davet kodu"><button class="orange" onclick="claimCreator()">Model hesabını aç</button><div id="claimmsg" class="msg"></div></div>
+ <div id="claimCard" class="card hidden"><div class="title">Model hesabını etkinleştir</div><div class="small">Yayıncı adını ve adminin verdiği davet kodunu gir.</div><input id="modelName" placeholder="Yayıncı adı"><input id="creatorCode" placeholder="Model davet kodu"><button class="orange" onclick="claimCreator()">Model hesabını aç</button><div id="claimmsg" class="msg"></div></div>
  <div id="modelArea" class="hidden">
   <div class="card"><div class="title">Yayın Durumu</div><button id="onlineBtn" class="primary" onclick="toggleOnline()">Online Ol</button><p class="small">Online olduğunda kullanıcı uygulamasında görünürsün ve özel oda isteği alırsın.</p></div>
   <div class="metric blue"><div>Kazancınız</div><div id="earn" class="big">0 puan</div></div>
   <div class="metric red"><div>Özel oda süresi</div><div id="duration" class="big">0 dk</div></div>
   <div class="card"><div class="title">Kazanç Detayları</div><div id="ledger"></div></div>
  </div>
- <div class="card"><div class="title">Hesap</div><div id="me"></div><button class="danger" onclick="logout()">Çıkış</button></div>
+ <div class="card"><div class="title">Hesap</div><div id="me"></div><div class="small" style="margin-top:10px">Bu cihaz otomatik oturumla bağlı.</div></div>
 </div>
 
 <div id="incoming" class="hidden"><div class="incomingBox"><h1>📹 Özel Oda</h1><h2 id="caller">Bir kullanıcı arıyor</h2><p id="callRate"></p><div class="row"><button class="danger" onclick="respond(false)">Reddet</button><button class="primary" onclick="respond(true)">Kabul Et</button></div></div></div>
@@ -48,13 +48,48 @@ function h(extra){return Object.assign({'apikey':KEY,'Content-Type':'application
 async function req(path,opt){let r=await fetch(URL+path,Object.assign({headers:h()},opt||{}));let tx=await r.text();let data=tx?JSON.parse(tx):null;if(!r.ok)throw new Error((data&&(data.message||data.error_description||data.error))||('HTTP '+r.status));return data;}
 async function rpc(name,body){return req('/rest/v1/rpc/'+name,{method:'POST',body:JSON.stringify(body||{})});}
 function msg(id,x){document.getElementById(id).textContent=x}
-async function login(){try{let d=await req('/auth/v1/token?grant_type=password',{method:'POST',body:JSON.stringify({email:email.value.trim(),password:pass.value})});save(d);await boot()}catch(e){msg('authmsg',e.message)}}
-async function signup(){try{let d=await req('/auth/v1/signup',{method:'POST',body:JSON.stringify({email:email.value.trim(),password:pass.value,data:{display_name:name.value.trim()||'Model'}})});if(d.access_token){save(d);await boot()}else msg('authmsg','Kayıt oluşturuldu. E-postanı doğrulayıp giriş yap.')}catch(e){msg('authmsg',e.message)}}
-function save(d){token=d.access_token;uid=d.user&&d.user.id||uid;localStorage.setItem('token',token);localStorage.setItem('uid',uid)}
-function logout(){try{setOnline(false)}catch(e){} localStorage.clear();location.reload()}
-async function boot(){if(!token){auth.classList.remove('hidden');return}auth.classList.add('hidden');try{await loadMe();clearInterval(pollTimer);clearInterval(refreshTimer);pollTimer=setInterval(pollCalls,1000);refreshTimer=setInterval(loadStats,3500);}catch(e){if((e.message||'').includes('JWT'))logout()}}
+function randomHex(bytes){
+  const a=new Uint8Array(bytes);crypto.getRandomValues(a);
+  return Array.from(a,b=>b.toString(16).padStart(2,'0')).join('');
+}
+async function ensureDeviceAuth(displayName){
+  let deviceId=localStorage.getItem('device_id');
+  let deviceSecret=localStorage.getItem('device_secret');
+  if(!deviceId){deviceId='model-'+randomHex(24);localStorage.setItem('device_id',deviceId)}
+  if(!deviceSecret){deviceSecret=randomHex(32);localStorage.setItem('device_secret',deviceSecret)}
+  let r=await fetch(URL+'/functions/v1/device-auth',{
+    method:'POST',
+    headers:{'apikey':KEY,'Content-Type':'application/json'},
+    body:JSON.stringify({device_id:deviceId,device_secret:deviceSecret,display_name:displayName})
+  });
+  let d=await r.json();
+  if(!r.ok)throw new Error(d.error||'Model cihaz oturumu açılamadı');
+  token=d.access_token;uid=d.user.id;
+  localStorage.setItem('token',token);localStorage.setItem('uid',uid);
+}
+async function boot(){
+  auth.classList.remove('hidden');
+  try{
+    msg('authmsg','Model cihaz hesabı hazırlanıyor…');
+    await ensureDeviceAuth('Model');
+    auth.classList.add('hidden');
+    await loadMe();
+    clearInterval(pollTimer);clearInterval(refreshTimer);
+    pollTimer=setInterval(pollCalls,1000);
+    refreshTimer=setInterval(loadStats,3500);
+  }catch(e){
+    msg('authmsg','Bağlantı hatası: '+e.message);
+  }
+}
 async function loadMe(){let p=await req('/rest/v1/profiles?id=eq.'+uid+'&select=*');profile=p[0];me.innerHTML='<b>'+esc(profile.display_name)+'</b><br><span class="small">'+esc(profile.role)+'</span>';claimCard.classList.toggle('hidden',profile.role==='creator');modelArea.classList.toggle('hidden',profile.role!=='creator');if(profile.role==='creator'){let c=await req('/rest/v1/creator_profiles?user_id=eq.'+uid+'&select=*');creator=c[0];updateOnlineButton();await loadStats()}}
-async function claimCreator(){try{await rpc('claim_creator',{p_code:creatorCode.value.trim()});msg('claimmsg','Model hesabı aktif.');await loadMe()}catch(e){msg('claimmsg',e.message)}}
+async function claimCreator(){try{
+    let nm=modelName.value.trim();
+    if(nm.length<2)throw new Error('Yayıncı adı gir');
+    await req('/rest/v1/profiles?id=eq.'+uid,{method:'PATCH',headers:h({'Prefer':'return=minimal'}),body:JSON.stringify({display_name:nm,updated_at:new Date().toISOString()})});
+    await rpc('claim_creator',{p_code:creatorCode.value.trim()});
+    msg('claimmsg','Model hesabı aktif.');
+    await loadMe();
+  }catch(e){msg('claimmsg',e.message)}}
 function updateOnlineButton(){status.textContent=profile.is_online?'● Online':'Offline';onlineBtn.textContent=profile.is_online?'Offline Ol':'Online Ol';onlineBtn.className=profile.is_online?'danger':'primary'}
 async function toggleOnline(){await setOnline(!profile.is_online);await loadMe()}
 async function setOnline(v){if(!token||!uid)return;await req('/rest/v1/profiles?id=eq.'+uid,{method:'PATCH',headers:h({'Prefer':'return=minimal'}),body:JSON.stringify({is_online:v,updated_at:new Date().toISOString()})});profile.is_online=v;updateOnlineButton()}
