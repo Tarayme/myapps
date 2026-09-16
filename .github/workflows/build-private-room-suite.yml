@@ -1,0 +1,38 @@
+name: Build PrivateRoom Suite APKs
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+    paths:
+      - 'private-room-suite/**'
+      - '.github/workflows/build-private-room-suite.yml'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: private-room-suite
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10.2'
+      - name: Install Android SDK
+        shell: bash
+        run: |
+          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses >/dev/null || true
+          $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "platforms;android-35" "build-tools;35.0.0"
+      - run: gradle :viewerapp:assembleDebug :modelapp:assembleDebug
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PrivateRoom-Viewer-Admin
+          path: private-room-suite/viewerapp/build/outputs/apk/debug/viewerapp-debug.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PrivateRoom-Model
+          path: private-room-suite/modelapp/build/outputs/apk/debug/modelapp-debug.apk
