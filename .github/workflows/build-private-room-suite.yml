@@ -6,6 +6,11 @@ on:
     paths:
       - 'private-room-suite/**'
       - '.github/workflows/build-private-room-suite.yml'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'private-room-suite/**'
+      - '.github/workflows/build-private-room-suite.yml'
 
 jobs:
   build:
