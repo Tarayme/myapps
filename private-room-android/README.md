@@ -15,3 +15,5 @@ Current APK prototype flow:
 The UI is native Android and intentionally uses no third-party runtime dependencies.
 
 The actual LiveKit/Supabase backend from the earlier scaffold can be connected after the interaction design is approved.
+
+Build trigger: GitHub Actions APK validation.
