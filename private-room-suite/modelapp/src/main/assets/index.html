@@ -57,7 +57,7 @@ input{width:100%;padding:14px;border:1px solid #ddd;border-radius:14px;margin:6p
 const URL='https://svjbssrjvwavxucjjklv.supabase.co';
 const KEY='sb_publishable_qfnKSsaBa9lSeApD6Xklbw_DtMdvlpA';
 let token=localStorage.getItem('token')||'',uid=localStorage.getItem('uid')||'',profile=null,creator=null;
-let pollTimer=null,refreshTimer=null,heartbeatTimer=null,incomingWatchTimer=null,ringTimer=null,currentCall=null,pc=null,localStream=null,signalTimer=null,billTimer=null,clockTimer=null,connectTimeout=null,callStarted=0,billingStarted=false,facingMode='user',muted=false,seenSignals=new Set(),queuedIce=[];
+let pollTimer=null,refreshTimer=null,authRefreshTimer=null,heartbeatTimer=null,incomingWatchTimer=null,ringTimer=null,currentCall=null,pc=null,localStream=null,signalTimer=null,billTimer=null,clockTimer=null,connectTimeout=null,callStarted=0,billingStarted=false,facingMode='user',muted=false,seenSignals=new Set(),queuedIce=[];
 let publicStream=null,publicRoomPollTimer=null,publicPeers=new Map(),publicSeenSignals=new Map(),publicQueuedIce=new Map();
 
 function h(extra){return Object.assign({'apikey':KEY,'Content-Type':'application/json'},token?{'Authorization':'Bearer '+token}: {},extra||{});}
@@ -183,11 +183,13 @@ async function enterApp(){
 
   clearInterval(pollTimer);
   clearInterval(refreshTimer);
+  clearInterval(authRefreshTimer);
   clearInterval(heartbeatTimer);
   clearInterval(publicRoomPollTimer);
 
   pollTimer=setInterval(pollCalls,1000);
   refreshTimer=setInterval(loadStats,3500);
+  authRefreshTimer=setInterval(async()=>{if(!(await refreshSavedSession())){clearSession();location.reload()}},2400000);
   heartbeatTimer=setInterval(()=>{if(profile&&profile.is_online)heartbeat()},15000);
   publicRoomPollTimer=setInterval(pollPublicRooms,800);
 }
@@ -231,6 +233,7 @@ async function logoutModel(){
   }catch(e){}
   clearInterval(pollTimer);
   clearInterval(refreshTimer);
+  clearInterval(authRefreshTimer);
   clearInterval(heartbeatTimer);
   clearInterval(publicRoomPollTimer);
   clearInterval(incomingWatchTimer);
