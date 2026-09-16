@@ -6,7 +6,7 @@
 header{height:82px;background:#586bd9;color:white;padding:0 18px;display:flex;align-items:center;position:sticky;top:0;z-index:6}.brand{display:flex;align-items:center;gap:10px;flex:1}.brandLogo{width:44px;height:44px;border-radius:13px}.logo{font-weight:900;font-size:24px}.pink{color:#ff4f90}.status{padding:10px 14px;border-radius:20px;background:#fff2;color:white}
 .wrap{padding:16px}.card{background:white;border-radius:24px;padding:18px;margin-bottom:16px;box-shadow:0 3px 12px #0001}.title{font-size:23px;font-weight:900;margin-bottom:14px}
 button{border:0;border-radius:16px;padding:14px;font-size:16px;font-weight:800}.primary{background:#21dc8a;color:#092415}.secondary{background:#586bd9;color:white}.danger{background:#f43e57;color:white}.orange{background:#ffa800;color:#171717}.dark{background:#282832;color:white}
-input{width:100%;padding:14px;border:1px solid #ddd;border-radius:14px;margin:6px 0 10px;font-size:16px}.row{display:flex;gap:10px}.row>*{flex:1}.small{font-size:13px;color:#777}.metric{border-radius:20px;padding:18px;color:white;margin-bottom:12px}.blue{background:#586bd9}.red{background:#f43e57}.big{font-size:31px;font-weight:900}
+input{width:100%;padding:14px;border:1px solid #ddd;border-radius:14px;margin:6px 0 10px;font-size:16px}.row{display:flex;gap:10px}.row>*{flex:1}.small{font-size:13px;color:#777}.preview{width:100%;height:260px;object-fit:cover;border-radius:18px;background:#111;margin:12px 0}.metric{border-radius:20px;padding:18px;color:white;margin-bottom:12px}.blue{background:#586bd9}.red{background:#f43e57}.big{font-size:31px;font-weight:900}
 #auth{position:fixed;inset:0;background:#586bd9;color:white;z-index:50;padding:28px 20px;overflow:auto}.authbox{background:white;color:#222;border-radius:26px;padding:22px;margin-top:40px}.msg{padding:10px;background:#f0f2ff;color:#333;border-radius:12px;margin:8px 0}
 #incoming{position:fixed;inset:0;background:#000b;z-index:70;display:flex;align-items:center;justify-content:center;padding:20px}.incomingBox{background:white;width:100%;border-radius:26px;padding:24px;text-align:center}
 #callScreen{position:fixed;inset:0;background:#000;z-index:80;color:white}.videoBox{position:absolute;inset:0 0 126px 0;background:#111}.videoBox video{width:100%;height:100%;object-fit:cover}.local{position:absolute!important;right:12px;top:12px;width:105px!important;height:150px!important;border-radius:14px;border:2px solid white;z-index:3}
@@ -22,7 +22,7 @@ input{width:100%;padding:14px;border:1px solid #ddd;border-radius:14px;margin:6p
 <div class="wrap">
  <div id="claimCard" class="card hidden"><div class="title">Model hesabını etkinleştir</div><div class="small">Yayıncı adını ve adminin verdiği davet kodunu gir.</div><input id="modelName" placeholder="Yayıncı adı"><input id="creatorCode" placeholder="Model davet kodu"><button class="orange" onclick="claimCreator()">Model hesabını aç</button><div id="claimmsg" class="msg"></div></div>
  <div id="modelArea" class="hidden">
-  <div class="card"><div class="title">Yayın Durumu</div><button id="onlineBtn" class="primary" onclick="toggleOnline()">Online Ol</button><p class="small">Online olduğunda kullanıcı uygulamasında görünürsün ve özel oda isteği alırsın. Özel oda: $0.50/dk.</p></div>
+  <div class="card"><div class="title">Yayın Durumu</div><video id="publicPreview" class="preview hidden" autoplay muted playsinline></video><div id="publicHint" class="small" style="margin-bottom:12px">Offline. Online Ol dediğinde public kamera yayını açılır.</div><button id="onlineBtn" class="primary" onclick="toggleOnline()">Online Ol</button><p class="small">Online olduğunda public odan izlenebilir. Sağdaki yeşil özel oda butonundan sana ücretli çağrı gönderilebilir. Özel oda: $0.50/dk.</p></div>
   <div class="metric blue"><div>Kazancınız</div><div id="earn" class="big">$0.00</div></div>
   <div class="metric red"><div>Özel oda süresi</div><div id="duration" class="big">0 dk</div></div>
   <div class="card"><div class="title">Kazanç Detayları</div><div id="ledger"></div></div>
@@ -43,6 +43,7 @@ const URL='https://svjbssrjvwavxucjjklv.supabase.co';
 const KEY='sb_publishable_qfnKSsaBa9lSeApD6Xklbw_DtMdvlpA';
 let token=localStorage.getItem('token')||'',uid=localStorage.getItem('uid')||'',profile=null,creator=null;
 let pollTimer=null,refreshTimer=null,heartbeatTimer=null,incomingWatchTimer=null,ringTimer=null,currentCall=null,pc=null,localStream=null,signalTimer=null,billTimer=null,clockTimer=null,connectTimeout=null,callStarted=0,billingStarted=false,facingMode='user',muted=false,seenSignals=new Set(),queuedIce=[];
+let publicStream=null,publicRoomPollTimer=null,publicPeers=new Map(),publicSeenSignals=new Map(),publicQueuedIce=new Map();
 
 function h(extra){return Object.assign({'apikey':KEY,'Content-Type':'application/json'},token?{'Authorization':'Bearer '+token}: {},extra||{});}
 async function req(path,opt){let r=await fetch(URL+path,Object.assign({headers:h()},opt||{}));let tx=await r.text();let data=tx?JSON.parse(tx):null;if(!r.ok)throw new Error((data&&(data.message||data.error_description||data.error))||('HTTP '+r.status));return data;}
@@ -74,11 +75,14 @@ async function boot(){
     await ensureDeviceAuth('Model');
     auth.classList.add('hidden');
     await loadMe();
-    if(profile&&profile.role==='creator'&&profile.is_online)await heartbeat();
-    clearInterval(pollTimer);clearInterval(refreshTimer);clearInterval(heartbeatTimer);
+    if(profile&&profile.role==='creator'&&profile.is_online){
+      try{await ensurePublicStream();await heartbeat()}catch(e){await rpc('creator_heartbeat',{p_online:false});profile.is_online=false;updateOnlineButton()}
+    }
+    clearInterval(pollTimer);clearInterval(refreshTimer);clearInterval(heartbeatTimer);clearInterval(publicRoomPollTimer);
     pollTimer=setInterval(pollCalls,1000);
     refreshTimer=setInterval(loadStats,3500);
     heartbeatTimer=setInterval(()=>{if(profile&&profile.role==='creator'&&profile.is_online)heartbeat()},15000);
+    publicRoomPollTimer=setInterval(pollPublicRooms,800);
   }catch(e){
     msg('authmsg','Bağlantı hatası: '+e.message);
   }
@@ -94,22 +98,96 @@ async function claimCreator(){try{
   }catch(e){msg('claimmsg',e.message)}}
 function updateOnlineButton(){let badge=document.getElementById('modelStatus');let btn=document.getElementById('onlineBtn');badge.textContent=profile.is_online?'● Online':'Offline';btn.textContent=profile.is_online?'Offline Ol':'Online Ol';btn.className=profile.is_online?'danger':'primary'}
 async function heartbeat(){try{await rpc('creator_heartbeat',{p_online:true})}catch(e){}}
-async function toggleOnline(){await setOnline(!profile.is_online);await loadMe()}
-async function setOnline(v){if(!token||!uid)return;await rpc('creator_heartbeat',{p_online:v});profile.is_online=v;updateOnlineButton();if(v)await heartbeat()}
+async function toggleOnline(){try{await setOnline(!profile.is_online);await loadMe()}catch(e){alert('Kamera/yayın açılamadı: '+e.message)}}
+async function setOnline(v){
+  if(!token||!uid)return;
+  if(v){
+    await ensurePublicStream();
+    await rpc('creator_heartbeat',{p_online:true});
+    profile.is_online=true;updateOnlineButton();publicHint.textContent='● Public yayın açık';await heartbeat();
+  }else{
+    await rpc('creator_heartbeat',{p_online:false});
+    profile.is_online=false;updateOnlineButton();stopPublicBroadcast();publicHint.textContent='Offline. Online Ol dediğinde public kamera yayını açılır.';
+  }
+}
+async function ensurePublicStream(){
+  if(publicStream&&publicStream.getTracks().some(t=>t.readyState==='live')){publicPreview.srcObject=publicStream;publicPreview.classList.remove('hidden');return publicStream}
+  if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia)throw new Error('Kamera API yok');
+  publicHint.textContent='Kamera açılıyor…';
+  publicStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'user'},audio:true});
+  publicPreview.srcObject=publicStream;publicPreview.classList.remove('hidden');publicHint.textContent='● Public yayın hazır';
+  return publicStream;
+}
+function closePublicPeers(){
+  for(let p of publicPeers.values())try{p.close()}catch(e){}
+  publicPeers.clear();publicSeenSignals.clear();publicQueuedIce.clear();
+}
+function stopPublicBroadcast(){
+  closePublicPeers();
+  if(publicStream){publicStream.getTracks().forEach(t=>t.stop());publicStream=null}
+  publicPreview.srcObject=null;publicPreview.classList.add('hidden');
+}
+async function publicRtcConfig(){
+  let rtc={iceServers:[{urls:['stun:stun.l.google.com:19302','stun:stun1.l.google.com:19302']}]};
+  try{let x=await rpc('get_rtc_config',{});if(x&&x.iceServers)rtc=x}catch(e){}
+  return rtc;
+}
+async function createPublicPeer(sessionId){
+  if(publicPeers.has(sessionId))return publicPeers.get(sessionId);
+  await ensurePublicStream();
+  let peer=new RTCPeerConnection(await publicRtcConfig());
+  publicStream.getTracks().forEach(t=>peer.addTrack(t,publicStream));
+  publicSeenSignals.set(sessionId,new Set());publicQueuedIce.set(sessionId,[]);
+  peer.onicecandidate=e=>{if(e.candidate)postPublicSignal(sessionId,'ice',e.candidate.toJSON()).catch(()=>{})};
+  peer.onconnectionstatechange=()=>{if(peer.connectionState==='failed'||peer.connectionState==='closed'){try{peer.close()}catch(e){}publicPeers.delete(sessionId)}};
+  publicPeers.set(sessionId,peer);
+  return peer;
+}
+async function postPublicSignal(sessionId,type,payload){
+  await req('/rest/v1/public_room_signals',{method:'POST',headers:h({'Prefer':'return=minimal'}),body:JSON.stringify({session_id:sessionId,sender_id:uid,signal_type:type,payload:payload})});
+}
+async function pollPublicRooms(){
+  if(!profile||profile.role!=='creator'||!profile.is_online||currentCall)return;
+  try{
+    let sessions=await req('/rest/v1/public_room_sessions?creator_id=eq.'+uid+'&state=eq.watching&order=created_at.asc&select=id,last_seen_at');
+    let active=new Set();
+    for(let s of sessions){
+      if(Date.now()-new Date(s.last_seen_at).getTime()>45000)continue;
+      active.add(s.id);
+      let peer=await createPublicPeer(s.id);
+      let seen=publicSeenSignals.get(s.id)||new Set();
+      let ice=publicQueuedIce.get(s.id)||[];
+      let signals=await req('/rest/v1/public_room_signals?session_id=eq.'+s.id+'&sender_id=neq.'+uid+'&order=id.asc&select=*');
+      for(let x of signals){
+        if(seen.has(x.id))continue;seen.add(x.id);
+        if(x.signal_type==='offer'&&!peer.remoteDescription){
+          await peer.setRemoteDescription(new RTCSessionDescription(x.payload));
+          for(let q of ice)try{await peer.addIceCandidate(new RTCIceCandidate(q))}catch(e){}
+          ice=[];
+          let ans=await peer.createAnswer();await peer.setLocalDescription(ans);await postPublicSignal(s.id,'answer',ans);
+        }else if(x.signal_type==='ice'){
+          if(peer.remoteDescription)await peer.addIceCandidate(new RTCIceCandidate(x.payload));else ice.push(x.payload);
+        }
+      }
+      publicSeenSignals.set(s.id,seen);publicQueuedIce.set(s.id,ice);
+    }
+    for(let [sid,p] of publicPeers){if(!active.has(sid)){try{p.close()}catch(e){}publicPeers.delete(sid);publicSeenSignals.delete(sid);publicQueuedIce.delete(sid)}}
+  }catch(e){}
+}
 async function loadStats(){if(!profile||profile.role!=='creator')return;try{let c=await req('/rest/v1/creator_profiles?user_id=eq.'+uid+'&select=*');creator=c[0];earn.textContent='$'+((creator?creator.total_earned_units:0)*0.50).toFixed(2);let calls=await req('/rest/v1/private_calls?creator_id=eq.'+uid+'&state=eq.ended&select=billed_seconds');let sec=calls.reduce((a,x)=>a+(x.billed_seconds||0),0);duration.textContent=Math.floor(sec/60)+' dk '+(sec%60)+' sn';let l=await req('/rest/v1/earning_ledger?creator_id=eq.'+uid+'&order=created_at.desc&limit=20&select=*');ledger.innerHTML='';l.forEach(x=>{let d=document.createElement('div');d.className='ledger';d.innerHTML='<span>'+esc(x.kind==='gift'?'🎁 '+(x.detail||'Hediye'):'📹 Özel Oda')+'</span><b>+$'+(x.units*0.50).toFixed(2)+'</b>';ledger.appendChild(d)});if(!l.length)ledger.innerHTML='<span class="small">Henüz kazanç yok.</span>'}catch(e){}}
 async function pollCalls(){if(!profile||profile.role!=='creator'||!profile.is_online||currentCall)return;try{let a=await req('/rest/v1/private_calls?creator_id=eq.'+uid+'&state=eq.requested&order=requested_at.asc&limit=1&select=*');let x=a[0];if(x&&x.request_expires_at&&new Date(x.request_expires_at)<=new Date())return;if(x){currentCall=x;let p=await req('/rest/v1/profiles?id=eq.'+currentCall.viewer_id+'&select=display_name');caller.textContent=(p[0]?p[0].display_name:'Kullanıcı')+' sizi arıyor';callRate.textContent='$0.50 / dk';incoming.classList.remove('hidden');startRinging();clearInterval(incomingWatchTimer);incomingWatchTimer=setInterval(watchIncoming,1000)}}catch(e){}}
 function startRinging(){stopRinging();try{navigator.vibrate&&navigator.vibrate([250,150,250]);}catch(e){}ringTimer=setInterval(()=>{try{let A=window.AudioContext||window.webkitAudioContext;if(A){let a=new A(),o=a.createOscillator(),g=a.createGain();o.frequency.value=620;g.gain.value=.05;o.connect(g);g.connect(a.destination);o.start();o.stop(a.currentTime+.18)}}catch(e){}},1200)}
 function stopRinging(){clearInterval(ringTimer);ringTimer=null;try{navigator.vibrate&&navigator.vibrate(0)}catch(e){}}
 async function watchIncoming(){if(!currentCall)return;try{let a=await req('/rest/v1/private_calls?id=eq.'+currentCall.id+'&select=state,end_reason');let x=a[0];if(!x||x.state!=='requested'){clearInterval(incomingWatchTimer);incoming.classList.add('hidden');stopRinging();currentCall=null}}catch(e){}}
-async function respond(ok){if(!currentCall)return;try{let c=await rpc('creator_respond_call',{p_call:currentCall.id,p_accept:ok});clearInterval(incomingWatchTimer);stopRinging();incoming.classList.add('hidden');if(!ok||c.state!=='accepted'){currentCall=null;return}currentCall=c;await startModelCall()}catch(e){alert(e.message);clearInterval(incomingWatchTimer);stopRinging();incoming.classList.add('hidden');currentCall=null}}
+async function respond(ok){if(!currentCall)return;try{let c=await rpc('creator_respond_call',{p_call:currentCall.id,p_accept:ok});clearInterval(incomingWatchTimer);stopRinging();incoming.classList.add('hidden');if(!ok||c.state!=='accepted'){currentCall=null;return}closePublicPeers();currentCall=c;await startModelCall()}catch(e){alert(e.message);clearInterval(incomingWatchTimer);stopRinging();incoming.classList.add('hidden');currentCall=null}}
 async function startModelCall(){callScreen.classList.remove('hidden');callTime.textContent='0:00';sessionEarn.textContent='$0.00';billingStarted=false;callStarted=0;try{await setupPeer();clearTimeout(connectTimeout);connectTimeout=setTimeout(()=>{if(!billingStarted){alert('Görüntü bağlantısı kurulamadı.');endCall('connect_timeout')}},55000)}catch(e){alert('Kamera/bağlantı hatası: '+e.message);try{await rpc('end_private_call',{p_call:currentCall.id,p_reason:'media_error'})}catch(_e){}cleanupCall()}}
 async function activateCall(){if(billingStarted||!currentCall)return;try{let c=await rpc('start_private_call',{p_call:currentCall.id});if(c.state==='active'){currentCall=c;billingStarted=true;callStarted=Date.now();clearTimeout(connectTimeout);clearInterval(clockTimer);clearInterval(billTimer);clockTimer=setInterval(updateClock,1000);billTimer=setInterval(settle,5000);updateClock();}}catch(e){callState.textContent='Başlatma hata'}}
 function updateClock(){let s=Math.floor((Date.now()-callStarted)/1000),m=Math.floor(s/60);callTime.textContent=m+':'+String(s%60).padStart(2,'0');if(currentCall){let mins=Math.ceil(Math.max(1,s)/60);sessionEarn.textContent='$'+(mins*0.50).toFixed(2)}}
 async function settle(){if(!currentCall||!billingStarted||currentCall.state!=='active')return;try{let c=await rpc('settle_private_call',{p_call:currentCall.id});currentCall=c;if(c.state==='ended'){alert('Görüşme sona erdi: '+(c.end_reason||''));cleanupCall()}await loadStats()}catch(e){callState.textContent='Ücret hata'}}
 async function setupPeer(){
  if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia)throw new Error('WebRTC kamera API yok');
- callState.textContent='Kamera açılıyor';
- localStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'user'},audio:true});
+ callState.textContent='Kamera hazırlanıyor';
+ localStream=await ensurePublicStream();
  localVideo.srcObject=localStream;
  callState.textContent='Teklif bekleniyor';
  let rtc={iceServers:[{urls:['stun:stun.l.google.com:19302','stun:stun1.l.google.com:19302']}]};try{let x=await rpc('get_rtc_config',{});if(x&&x.iceServers)rtc=x}catch(e){}pc=new RTCPeerConnection(rtc);
@@ -124,10 +202,10 @@ async function postSignal(type,payload){await req('/rest/v1/call_signals',{metho
 async function pollSignals(){if(!currentCall||!pc)return;try{let a=await req('/rest/v1/call_signals?call_id=eq.'+currentCall.id+'&sender_id=neq.'+uid+'&order=id.asc&select=*');for(let s of a){if(seenSignals.has(s.id))continue;seenSignals.add(s.id);if(s.signal_type==='offer'&&!pc.remoteDescription){callState.textContent='Teklif alındı';await pc.setRemoteDescription(new RTCSessionDescription(s.payload));await flushIce();let ans=await pc.createAnswer();await pc.setLocalDescription(ans);await postSignal('answer',ans);callState.textContent='Cevap gönderildi'}else if(s.signal_type==='ice'){if(pc.remoteDescription)await pc.addIceCandidate(new RTCIceCandidate(s.payload));else queuedIce.push(s.payload)}}}catch(e){callState.textContent='Sinyal hata: '+e.message}}
 async function flushIce(){for(let c of queuedIce)try{await pc.addIceCandidate(new RTCIceCandidate(c))}catch(e){} queuedIce=[]}
 async function toggleMute(){if(!localStream)return;muted=!muted;localStream.getAudioTracks().forEach(t=>t.enabled=!muted);muteBtn.textContent=muted?'🔇 Sessiz':'🎙 Ses'}
-async function flipCamera(){if(!localStream)return;try{facingMode=facingMode==='user'?'environment':'user';let ns=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:facingMode}},audio:false});let nt=ns.getVideoTracks()[0];let sender=pc&&pc.getSenders().find(s=>s.track&&s.track.kind==='video');if(sender)await sender.replaceTrack(nt);let old=localStream.getVideoTracks()[0];if(old){localStream.removeTrack(old);old.stop()}localStream.addTrack(nt);localVideo.srcObject=null;localVideo.srcObject=localStream;}catch(e){alert('Kamera değiştirilemedi')}}
+async function flipCamera(){if(!localStream)return;try{facingMode=facingMode==='user'?'environment':'user';let ns=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:facingMode}},audio:false});let nt=ns.getVideoTracks()[0];let sender=pc&&pc.getSenders().find(s=>s.track&&s.track.kind==='video');if(sender)await sender.replaceTrack(nt);let old=localStream.getVideoTracks()[0];if(old){localStream.removeTrack(old);old.stop()}localStream.addTrack(nt);publicStream=localStream;publicPreview.srcObject=publicStream;localVideo.srcObject=null;localVideo.srcObject=localStream;}catch(e){alert('Kamera değiştirilemedi')}}
 async function endCall(reason='creator_ended'){if(currentCall)try{await rpc('end_private_call',{p_call:currentCall.id,p_reason:reason})}catch(e){} cleanupCall()}
-function cleanupCall(){clearInterval(signalTimer);clearInterval(billTimer);clearInterval(clockTimer);clearTimeout(connectTimeout);clearTimeout(disconnectTimer);clearInterval(incomingWatchTimer);stopRinging();billingStarted=false;callStarted=0;muted=false;facingMode='user';if(pc){pc.close();pc=null}if(localStream){localStream.getTracks().forEach(t=>t.stop());localStream=null}remoteVideo.srcObject=null;localVideo.srcObject=null;callScreen.classList.add('hidden');currentCall=null;loadStats()}
+function cleanupCall(){clearInterval(signalTimer);clearInterval(billTimer);clearInterval(clockTimer);clearTimeout(connectTimeout);clearTimeout(disconnectTimer);clearInterval(incomingWatchTimer);stopRinging();billingStarted=false;callStarted=0;muted=false;facingMode='user';if(pc){pc.close();pc=null}if(publicStream)publicStream.getAudioTracks().forEach(t=>t.enabled=true);localStream=null;remoteVideo.srcObject=null;localVideo.srcObject=null;callScreen.classList.add('hidden');currentCall=null;if(profile&&profile.is_online){publicPreview.srcObject=publicStream;publicPreview.classList.remove('hidden');publicHint.textContent='● Public yayın açık'}loadStats()}
 function esc(s){return String(s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
-window.addEventListener('beforeunload',()=>{if(profile&&profile.role==='creator'&&profile.is_online)rpc('creator_heartbeat',{p_online:false}).catch(()=>{})});
+window.addEventListener('beforeunload',()=>{stopPublicBroadcast();if(profile&&profile.role==='creator'&&profile.is_online)rpc('creator_heartbeat',{p_online:false}).catch(()=>{})});
 boot();
 </script></body></html>
