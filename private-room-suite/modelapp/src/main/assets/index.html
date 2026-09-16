@@ -115,7 +115,7 @@ async function setupPeer(){
  pc=new RTCPeerConnection({iceServers:[{urls:'stun:stun.l.google.com:19302'},{urls:'stun:stun1.l.google.com:19302'}]});
  localStream.getTracks().forEach(t=>pc.addTrack(t,localStream));
  pc.ontrack=e=>{remoteVideo.srcObject=e.streams[0];callState.textContent='Bağlandı'};
- pc.onconnectionstatechange=()=>{if(!pc)return;callState.textContent='RTC '+pc.connectionState;if(pc.connectionState==='connected')activateCall();};
+ pc.onconnectionstatechange=()=>{if(!pc)return;let s=pc.connectionState;callState.textContent='RTC '+s;if(s==='connected'){clearTimeout(disconnectTimer);activateCall()}else if(s==='disconnected'||s==='failed'){clearTimeout(disconnectTimer);disconnectTimer=setTimeout(()=>{if(pc&&pc.connectionState!=='connected')endCall('rtc_'+pc.connectionState)},8000)}};
  pc.oniceconnectionstatechange=()=>{if(pc&&pc.iceConnectionState==='failed')callState.textContent='ICE failed'};
  pc.onicecandidate=e=>{if(e.candidate)postSignal('ice',e.candidate.toJSON()).catch(err=>callState.textContent='ICE yazma hatası')};
  seenSignals.clear();queuedIce=[];clearInterval(signalTimer);signalTimer=setInterval(pollSignals,600);
@@ -126,7 +126,7 @@ async function flushIce(){for(let c of queuedIce)try{await pc.addIceCandidate(ne
 async function toggleMute(){if(!localStream)return;muted=!muted;localStream.getAudioTracks().forEach(t=>t.enabled=!muted);muteBtn.textContent=muted?'🔇 Sessiz':'🎙 Ses'}
 async function flipCamera(){if(!localStream)return;try{facingMode=facingMode==='user'?'environment':'user';let ns=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:facingMode}},audio:false});let nt=ns.getVideoTracks()[0];let sender=pc&&pc.getSenders().find(s=>s.track&&s.track.kind==='video');if(sender)await sender.replaceTrack(nt);let old=localStream.getVideoTracks()[0];if(old){localStream.removeTrack(old);old.stop()}localStream.addTrack(nt);localVideo.srcObject=null;localVideo.srcObject=localStream;}catch(e){alert('Kamera değiştirilemedi')}}
 async function endCall(reason='creator_ended'){if(currentCall)try{await rpc('end_private_call',{p_call:currentCall.id,p_reason:reason})}catch(e){} cleanupCall()}
-function cleanupCall(){clearInterval(signalTimer);clearInterval(billTimer);clearInterval(clockTimer);clearTimeout(connectTimeout);clearInterval(incomingWatchTimer);stopRinging();billingStarted=false;callStarted=0;muted=false;facingMode='user';if(pc){pc.close();pc=null}if(localStream){localStream.getTracks().forEach(t=>t.stop());localStream=null}remoteVideo.srcObject=null;localVideo.srcObject=null;callScreen.classList.add('hidden');currentCall=null;loadStats()}
+function cleanupCall(){clearInterval(signalTimer);clearInterval(billTimer);clearInterval(clockTimer);clearTimeout(connectTimeout);clearTimeout(disconnectTimer);clearInterval(incomingWatchTimer);stopRinging();billingStarted=false;callStarted=0;muted=false;facingMode='user';if(pc){pc.close();pc=null}if(localStream){localStream.getTracks().forEach(t=>t.stop());localStream=null}remoteVideo.srcObject=null;localVideo.srcObject=null;callScreen.classList.add('hidden');currentCall=null;loadStats()}
 function esc(s){return String(s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
 window.addEventListener('beforeunload',()=>{if(profile&&profile.role==='creator'&&profile.is_online)rpc('creator_heartbeat',{p_online:false}).catch(()=>{})});
 boot();
