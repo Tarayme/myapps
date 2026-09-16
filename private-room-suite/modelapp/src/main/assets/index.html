@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="tr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>PrivateRoom Model</title>
+<style>
+*{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;background:#dffefe;color:#26262c}.hidden{display:none!important}
+header{height:82px;background:#586bd9;color:white;padding:0 18px;display:flex;align-items:center;position:sticky;top:0;z-index:6}.logo{font-weight:900;font-size:24px;flex:1}.pink{color:#ff4f90}.status{padding:10px 14px;border-radius:20px;background:#fff2;color:white}
+.wrap{padding:16px}.card{background:white;border-radius:24px;padding:18px;margin-bottom:16px;box-shadow:0 3px 12px #0001}.title{font-size:23px;font-weight:900;margin-bottom:14px}
+button{border:0;border-radius:16px;padding:14px;font-size:16px;font-weight:800}.primary{background:#21dc8a;color:#092415}.secondary{background:#586bd9;color:white}.danger{background:#f43e57;color:white}.orange{background:#ffa800;color:#171717}.dark{background:#282832;color:white}
+input{width:100%;padding:14px;border:1px solid #ddd;border-radius:14px;margin:6px 0 10px;font-size:16px}.row{display:flex;gap:10px}.row>*{flex:1}.small{font-size:13px;color:#777}.metric{border-radius:20px;padding:18px;color:white;margin-bottom:12px}.blue{background:#586bd9}.red{background:#f43e57}.big{font-size:31px;font-weight:900}
+#auth{position:fixed;inset:0;background:#586bd9;color:white;z-index:50;padding:28px 20px;overflow:auto}.authbox{background:white;color:#222;border-radius:26px;padding:22px;margin-top:40px}.msg{padding:10px;background:#f0f2ff;color:#333;border-radius:12px;margin:8px 0}
+#incoming{position:fixed;inset:0;background:#000b;z-index:70;display:flex;align-items:center;justify-content:center;padding:20px}.incomingBox{background:white;width:100%;border-radius:26px;padding:24px;text-align:center}
+#callScreen{position:fixed;inset:0;background:#000;z-index:80;color:white}.videoBox{position:absolute;inset:0 0 126px 0;background:#111}.videoBox video{width:100%;height:100%;object-fit:cover}.local{position:absolute!important;right:12px;top:12px;width:105px!important;height:150px!important;border-radius:14px;border:2px solid white;z-index:3}
+.callTop{position:absolute;top:16px;left:16px;right:16px;display:flex;gap:8px;z-index:4}.pill{background:#000a;border:1px solid #fff8;border-radius:22px;padding:10px 14px}.callBottom{position:absolute;bottom:18px;left:12px;right:12px;display:flex;gap:10px;z-index:4}.callBottom button{flex:1}
+.ledger{padding:11px 0;border-bottom:1px solid #eee;display:flex;justify-content:space-between}
+</style></head><body>
+<div id="auth"><div class="logo">PRIVATE<span class="pink">ROOM</span> MODEL</div><div class="authbox">
+<h2>Model Girişi</h2><input id="email" type="email" placeholder="E-posta"><input id="pass" type="password" placeholder="Şifre"><input id="name" placeholder="Yayıncı adı">
+<div class="row"><button class="secondary" onclick="login()">Giriş</button><button class="primary" onclick="signup()">Kayıt ol</button></div>
+<div id="authmsg" class="msg">İlk kayıtta e-posta doğrulaması istenebilir.</div></div></div>
+
+<header><div class="logo">PRIVATE<span class="pink">ROOM</span> MODEL</div><div id="status" class="status">Offline</div></header>
+<div class="wrap">
+ <div id="claimCard" class="card hidden"><div class="title">Model hesabını etkinleştir</div><div class="small">Adminin verdiği davet kodunu gir.</div><input id="creatorCode" placeholder="Model davet kodu"><button class="orange" onclick="claimCreator()">Model hesabını aç</button><div id="claimmsg" class="msg"></div></div>
+ <div id="modelArea" class="hidden">
+  <div class="card"><div class="title">Yayın Durumu</div><button id="onlineBtn" class="primary" onclick="toggleOnline()">Online Ol</button><p class="small">Online olduğunda kullanıcı uygulamasında görünürsün ve özel oda isteği alırsın.</p></div>
+  <div class="metric blue"><div>Kazancınız</div><div id="earn" class="big">0 puan</div></div>
+  <div class="metric red"><div>Özel oda süresi</div><div id="duration" class="big">0 dk</div></div>
+  <div class="card"><div class="title">Kazanç Detayları</div><div id="ledger"></div></div>
+ </div>
+ <div class="card"><div class="title">Hesap</div><div id="me"></div><button class="danger" onclick="logout()">Çıkış</button></div>
+</div>
+
+<div id="incoming" class="hidden"><div class="incomingBox"><h1>📹 Özel Oda</h1><h2 id="caller">Bir kullanıcı arıyor</h2><p id="callRate"></p><div class="row"><button class="danger" onclick="respond(false)">Reddet</button><button class="primary" onclick="respond(true)">Kabul Et</button></div></div></div>
+
+<div id="callScreen" class="hidden">
+ <div class="videoBox"><video id="remoteVideo" autoplay playsinline></video><video id="localVideo" class="local" autoplay muted playsinline></video></div>
+ <div class="callTop"><div class="pill">Özel Oda</div><div id="callTime" class="pill">0:00</div><div id="sessionEarn" class="pill">0 puan</div></div>
+ <div class="callBottom"><button class="danger" onclick="endCall()">Görüşmeyi Bitir</button></div>
+</div>
+
+<script>
+const URL='https://svjbssrjvwavxucjjklv.supabase.co';
+const KEY='sb_publishable_qfnKSsaBa9lSeApD6Xklbw_DtMdvlpA';
+let token=localStorage.getItem('token')||'',uid=localStorage.getItem('uid')||'',profile=null,creator=null;
+let pollTimer=null,refreshTimer=null,currentCall=null,pc=null,localStream=null,signalTimer=null,billTimer=null,clockTimer=null,callStarted=0,seenSignals=new Set(),queuedIce=[];
+
+function h(extra){return Object.assign({'apikey':KEY,'Content-Type':'application/json'},token?{'Authorization':'Bearer '+token}: {},extra||{});}
+async function req(path,opt){let r=await fetch(URL+path,Object.assign({headers:h()},opt||{}));let tx=await r.text();let data=tx?JSON.parse(tx):null;if(!r.ok)throw new Error((data&&(data.message||data.error_description||data.error))||('HTTP '+r.status));return data;}
+async function rpc(name,body){return req('/rest/v1/rpc/'+name,{method:'POST',body:JSON.stringify(body||{})});}
+function msg(id,x){document.getElementById(id).textContent=x}
+async function login(){try{let d=await req('/auth/v1/token?grant_type=password',{method:'POST',body:JSON.stringify({email:email.value.trim(),password:pass.value})});save(d);await boot()}catch(e){msg('authmsg',e.message)}}
+async function signup(){try{let d=await req('/auth/v1/signup',{method:'POST',body:JSON.stringify({email:email.value.trim(),password:pass.value,data:{display_name:name.value.trim()||'Model'}})});if(d.access_token){save(d);await boot()}else msg('authmsg','Kayıt oluşturuldu. E-postanı doğrulayıp giriş yap.')}catch(e){msg('authmsg',e.message)}}
+function save(d){token=d.access_token;uid=d.user&&d.user.id||uid;localStorage.setItem('token',token);localStorage.setItem('uid',uid)}
+function logout(){try{setOnline(false)}catch(e){} localStorage.clear();location.reload()}
+async function boot(){if(!token){auth.classList.remove('hidden');return}auth.classList.add('hidden');try{await loadMe();clearInterval(pollTimer);clearInterval(refreshTimer);pollTimer=setInterval(pollCalls,1000);refreshTimer=setInterval(loadStats,3500);}catch(e){if((e.message||'').includes('JWT'))logout()}}
+async function loadMe(){let p=await req('/rest/v1/profiles?id=eq.'+uid+'&select=*');profile=p[0];me.innerHTML='<b>'+esc(profile.display_name)+'</b><br><span class="small">'+esc(profile.role)+'</span>';claimCard.classList.toggle('hidden',profile.role==='creator');modelArea.classList.toggle('hidden',profile.role!=='creator');if(profile.role==='creator'){let c=await req('/rest/v1/creator_profiles?user_id=eq.'+uid+'&select=*');creator=c[0];updateOnlineButton();await loadStats()}}
+async function claimCreator(){try{await rpc('claim_creator',{p_code:creatorCode.value.trim()});msg('claimmsg','Model hesabı aktif.');await loadMe()}catch(e){msg('claimmsg',e.message)}}
+function updateOnlineButton(){status.textContent=profile.is_online?'● Online':'Offline';onlineBtn.textContent=profile.is_online?'Offline Ol':'Online Ol';onlineBtn.className=profile.is_online?'danger':'primary'}
+async function toggleOnline(){await setOnline(!profile.is_online);await loadMe()}
+async function setOnline(v){if(!token||!uid)return;await req('/rest/v1/profiles?id=eq.'+uid,{method:'PATCH',headers:h({'Prefer':'return=minimal'}),body:JSON.stringify({is_online:v,updated_at:new Date().toISOString()})});profile.is_online=v;updateOnlineButton()}
+async function loadStats(){if(!profile||profile.role!=='creator')return;try{let c=await req('/rest/v1/creator_profiles?user_id=eq.'+uid+'&select=*');creator=c[0];earn.textContent=(creator?creator.total_earned_units:0)+' puan';let calls=await req('/rest/v1/private_calls?creator_id=eq.'+uid+'&state=eq.ended&select=billed_seconds');let sec=calls.reduce((a,x)=>a+(x.billed_seconds||0),0);duration.textContent=Math.floor(sec/60)+' dk';let l=await req('/rest/v1/earning_ledger?creator_id=eq.'+uid+'&order=created_at.desc&limit=20&select=*');ledger.innerHTML='';l.forEach(x=>{let d=document.createElement('div');d.className='ledger';d.innerHTML='<span>'+esc(x.kind==='gift'?'🎁 '+(x.detail||'Hediye'):'📹 Özel Oda')+'</span><b>+'+x.units+'</b>';ledger.appendChild(d)});if(!l.length)ledger.innerHTML='<span class="small">Henüz kazanç yok.</span>'}catch(e){}}
+async function pollCalls(){if(!profile||profile.role!=='creator'||!profile.is_online||currentCall)return;try{let a=await req('/rest/v1/private_calls?creator_id=eq.'+uid+'&state=eq.requested&order=requested_at.asc&limit=1&select=*');if(a[0]){currentCall=a[0];let p=await req('/rest/v1/profiles?id=eq.'+currentCall.viewer_id+'&select=display_name');caller.textContent=(p[0]?p[0].display_name:'Kullanıcı')+' sizi arıyor';callRate.textContent=currentCall.rate_minutes+' dk / dakika';incoming.classList.remove('hidden')}}catch(e){}}
+async function respond(ok){if(!currentCall)return;try{let c=await rpc('creator_respond_call',{p_call:currentCall.id,p_accept:ok});incoming.classList.add('hidden');if(!ok){currentCall=null;return}currentCall=await rpc('start_private_call',{p_call:c.id});await startModelCall()}catch(e){alert(e.message);incoming.classList.add('hidden');currentCall=null}}
+async function startModelCall(){callScreen.classList.remove('hidden');callStarted=Date.now();clockTimer=setInterval(updateClock,1000);billTimer=setInterval(settle,5000);await setupPeer()}
+function updateClock(){let s=Math.floor((Date.now()-callStarted)/1000),m=Math.floor(s/60);callTime.textContent=m+':'+String(s%60).padStart(2,'0');if(currentCall)sessionEarn.textContent=(Math.ceil(Math.max(1,s)/60)*currentCall.rate_minutes)+' puan'}
+async function settle(){if(!currentCall)return;try{let c=await rpc('settle_private_call',{p_call:currentCall.id});currentCall=c;if(c.state==='ended'){alert('Görüşme sona erdi: '+(c.end_reason||''));cleanupCall()}await loadStats()}catch(e){}}
+async function setupPeer(){
+ localStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'user'},audio:true});localVideo.srcObject=localStream;
+ pc=new RTCPeerConnection({iceServers:[{urls:'stun:stun.l.google.com:19302'},{urls:'stun:stun1.l.google.com:19302'}]});
+ localStream.getTracks().forEach(t=>pc.addTrack(t,localStream));pc.ontrack=e=>{remoteVideo.srcObject=e.streams[0]};pc.onicecandidate=e=>{if(e.candidate)postSignal('ice',e.candidate.toJSON())};
+ seenSignals.clear();queuedIce=[];clearInterval(signalTimer);signalTimer=setInterval(pollSignals,600);
+}
+async function postSignal(type,payload){await req('/rest/v1/call_signals',{method:'POST',headers:h({'Prefer':'return=minimal'}),body:JSON.stringify({call_id:currentCall.id,sender_id:uid,signal_type:type,payload:payload})})}
+async function pollSignals(){if(!currentCall||!pc)return;try{let a=await req('/rest/v1/call_signals?call_id=eq.'+currentCall.id+'&sender_id=neq.'+uid+'&order=id.asc&select=*');for(let s of a){if(seenSignals.has(s.id))continue;seenSignals.add(s.id);if(s.signal_type==='offer'&&!pc.remoteDescription){await pc.setRemoteDescription(new RTCSessionDescription(s.payload));await flushIce();let ans=await pc.createAnswer();await pc.setLocalDescription(ans);await postSignal('answer',ans)}else if(s.signal_type==='ice'){if(pc.remoteDescription)await pc.addIceCandidate(new RTCIceCandidate(s.payload));else queuedIce.push(s.payload)}}}catch(e){}}
+async function flushIce(){for(let c of queuedIce)try{await pc.addIceCandidate(new RTCIceCandidate(c))}catch(e){} queuedIce=[]}
+async function endCall(){if(currentCall)try{await rpc('end_private_call',{p_call:currentCall.id,p_reason:'creator_ended'})}catch(e){} cleanupCall()}
+function cleanupCall(){clearInterval(signalTimer);clearInterval(billTimer);clearInterval(clockTimer);if(pc){pc.close();pc=null}if(localStream){localStream.getTracks().forEach(t=>t.stop());localStream=null}remoteVideo.srcObject=null;localVideo.srcObject=null;callScreen.classList.add('hidden');currentCall=null;loadStats()}
+function esc(s){return String(s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
+window.addEventListener('beforeunload',()=>{if(profile&&profile.role==='creator')setOnline(false)});
+boot();
+</script></body></html>
