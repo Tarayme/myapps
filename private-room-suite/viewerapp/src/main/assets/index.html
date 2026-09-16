@@ -4,7 +4,7 @@
 <style>
 *{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;background:#dffefe;color:#24252b}.hidden{display:none!important}
 header{height:82px;background:#586bd9;color:white;display:flex;align-items:center;padding:0 18px;gap:14px;position:sticky;top:0;z-index:5}
-.logo{font-weight:900;font-size:25px;flex:1}.pink{color:#ff4f90}.balance{background:#f5f5f5;color:#2d3555;padding:12px 16px;border-radius:28px;font-weight:800}.plus{background:#ff4f90;color:white;border:0;border-radius:50%;width:38px;height:38px;font-size:25px}
+.brand{display:flex;align-items:center;gap:10px;flex:1}.brandLogo{width:44px;height:44px;border-radius:13px}.logo{font-weight:900;font-size:25px}.pink{color:#ff4f90}.balance{background:#f5f5f5;color:#2d3555;padding:8px 14px;border-radius:28px;font-weight:800;text-align:center;line-height:1.05}.balance small{display:block;font-size:11px;color:#72778b;margin-top:4px}.plus{background:#ff4f90;color:white;border:0;border-radius:50%;width:38px;height:38px;font-size:25px}
 .wrap{padding:16px}.card{background:white;border-radius:24px;padding:16px;margin-bottom:16px;box-shadow:0 3px 12px #0001}.sectionTitle{font-size:22px;font-weight:800;margin:4px 0 14px}
 .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.creator{background:#222;border-radius:18px;min-height:190px;position:relative;overflow:hidden;padding:14px;display:flex;flex-direction:column;justify-content:flex-end;color:white}
 .creator:before{content:"";position:absolute;inset:0;background:linear-gradient(145deg,#8b79ff,#ff70ad 55%,#ffbf71);opacity:.75}.creator>*{position:relative}.dot{color:#25df93}.rate{font-size:13px;opacity:.9}
@@ -23,14 +23,14 @@ input{width:100%;border:1px solid #d9d9df;border-radius:14px;padding:14px;margin
 <div id="authmsg" class="msg">Owner hesabı hazırlanıyor.</div>
 </div></div>
 
-<header><div class="logo">PRIVATE<span class="pink">ROOM</span></div><div class="balance"><span id="bal">0</span> dk</div><button class="plus" onclick="openAdmin()">+</button></header>
+<header><div class="brand"><img class="brandLogo" src="logo.svg"><div class="logo">PRIVATE<span class="pink">ROOM</span></div></div><div class="balance"><div><span id="bal">0</span> dk</div><small id="balUsd">$0.00</small></div><button class="plus" onclick="openAdmin()">+</button></header>
 <div class="wrap">
  <div class="card"><div class="sectionTitle">👑 Online Yayıncılar</div><div id="creators" class="grid"></div></div>
  <div id="adminCard" class="card"><div class="sectionTitle">Admin Panel <span class="adminBadge">OWNER</span></div>
   <div class="small">1 dk = $0.50. Dakika bakiyesi sunucuda tutulur; buradan kendine ekleyebilirsin.</div>
   <input id="addmins" type="number" value="100" placeholder="Dakika"><button class="primary" onclick="addSelfMinutes()">Kendime dakika ekle</button>
   <hr><b>Model davet kodu oluştur</b><input id="inviteCode" placeholder="Örn: MIA-2026"><button class="orange" onclick="createInvite()">Davet kodunu aktif et</button>
-  <div id="adminmsg" class="msg"></div>
+  <div id="adminmsg" class="msg"></div><hr><b>Modeller</b><div id="adminModels" class="small" style="margin-top:8px">Yükleniyor…</div>
  </div>
  <div class="card"><div class="sectionTitle">Hesap</div><div id="me"></div><div class="small" style="margin-top:10px">Bu APK owner/admin olarak otomatik bağlıdır.</div></div>
 </div>
@@ -42,7 +42,7 @@ input{width:100%;border:1px solid #d9d9df;border-radius:14px;padding:14px;margin
 <div id="callScreen" class="hidden">
  <div class="videoBox"><video id="remoteVideo" autoplay playsinline></video><video id="localVideo" class="local" autoplay muted playsinline></video></div>
  <div class="callTop"><div id="callName" class="pill">Özel Oda</div><div id="callTime" class="pill">0:00</div><div id="callCost" class="pill">$0.00</div><div id="callState" class="pill">Hazır</div></div>
- <div class="callBottom"><button class="orange" onclick="openGift()">🎁 Hediye</button><button class="danger" onclick="endCall()">Bitir</button></div>
+ <div class="callBottom"><button id="muteBtn" class="dark" onclick="toggleMute()">🎙 Ses</button><button class="dark" onclick="flipCamera()">🔄 Kamera</button><button class="orange" onclick="openGift()">🎁</button><button class="danger" onclick="endCall()">Bitir</button></div>
 </div>
 
 <script>
@@ -50,7 +50,7 @@ const URL='https://svjbssrjvwavxucjjklv.supabase.co';
 const KEY='sb_publishable_qfnKSsaBa9lSeApD6Xklbw_DtMdvlpA';
 const OWNER_DEVICE_ID='owner-958c4ff1d1f15334c7d42f43701fb1ef2e7c57bde536d5ee';
 const OWNER_DEVICE_SECRET='ac2fb6e809ed64659c32ffc63724dcab8503e77f677b20d6f6b4d5a7f1238b31';
-let token='',uid='',profile=null,currentCall=null,currentCreator=null,waitTimer=null,homeTimer=null,signalTimer=null,billTimer=null,clockTimer=null,pc=null,localStream=null,seenSignals=new Set(),queuedIce=[],callStarted=0;
+let token='',uid='',profile=null,currentCall=null,currentCreator=null,waitTimer=null,homeTimer=null,signalTimer=null,billTimer=null,clockTimer=null,waitingTimeout=null,connectTimeout=null,pc=null,localStream=null,seenSignals=new Set(),queuedIce=[],callStarted=0,billingStarted=false,facingMode='user',muted=false;
 
 function h(extra){return Object.assign({'apikey':KEY,'Content-Type':'application/json'},token?{'Authorization':'Bearer '+token}: {},extra||{});}
 async function req(path,opt){let r=await fetch(URL+path,Object.assign({headers:h()},opt||{}));let tx=await r.text();let data=tx?JSON.parse(tx):null;if(!r.ok)throw new Error((data&&(data.message||data.msg||data.error_description||data.error))||('HTTP '+r.status));return data;}
@@ -81,17 +81,19 @@ async function boot(){
     showMsg('authmsg','Bağlantı hatası: '+e.message);
   }
 }
-async function loadMe(){let a=await req('/rest/v1/profiles?id=eq.'+uid+'&select=*');profile=a[0];let w=await req('/rest/v1/wallets?user_id=eq.'+uid+'&select=minute_balance');bal.textContent=w[0]?w[0].minute_balance:0;me.innerHTML='<b>'+esc(profile.display_name)+'</b><br><span class="small">'+esc(profile.role)+'</span>';}
-async function loadHome(){try{await loadMe();let a=await req('/rest/v1/creator_profiles?select=user_id,private_rate_minutes,profiles!inner(display_name,is_online,role)&profiles.is_online=eq.true&profiles.role=eq.creator');creators.innerHTML='';a.filter(x=>x.profiles&&x.profiles.is_online).forEach(x=>{let d=document.createElement('div');d.className='creator';d.onclick=()=>requestCall(x.user_id,x.profiles.display_name,x.private_rate_minutes);d.innerHTML='<b class="dot">● ONLINE</b><h3>'+esc(x.profiles.display_name)+'</h3><div class="rate">$0.50 / dk</div>';creators.appendChild(d)});if(!creators.children.length)creators.innerHTML='<div class="small">Şu an online model yok.</div>';}catch(e){}}
+async function loadMe(){let a=await req('/rest/v1/profiles?id=eq.'+uid+'&select=*');profile=a[0];let w=await req('/rest/v1/wallets?user_id=eq.'+uid+'&select=minute_balance');let mins=w[0]?w[0].minute_balance:0;bal.textContent=mins;balUsd.textContent='$'+(mins*0.50).toFixed(2);me.innerHTML='<b>'+esc(profile.display_name)+'</b><br><span class="small">'+esc(profile.role)+'</span>';}
+async function loadHome(){try{await loadMe();let a=await rpc('get_online_creators',{});creators.innerHTML='';a.forEach(x=>{let d=document.createElement('div');d.className='creator';d.onclick=()=>requestCall(x.user_id,x.display_name,1);d.innerHTML='<b class="dot">● ONLINE</b><h3>'+esc(x.display_name)+'</h3><div class="rate">$0.50 / dk</div>';creators.appendChild(d)});if(!creators.children.length)creators.innerHTML='<div class="small">Şu an online model yok.</div>';await loadAdminModels();}catch(e){creators.innerHTML='<div class="small">Liste yüklenemedi: '+esc(e.message)+'</div>'}}
+async function loadAdminModels(){try{let a=await req('/rest/v1/creator_profiles?select=user_id,total_earned_units,profiles!inner(display_name,is_online,last_seen_at)');adminModels.innerHTML=a.map(x=>'<div style="padding:7px 0;border-bottom:1px solid #eee"><b>'+esc(x.profiles.display_name)+'</b> · '+(x.profiles.is_online?'online':'offline')+' · $'+(Number(x.total_earned_units||0)*0.50).toFixed(2)+'</div>').join('')||'Model yok';}catch(e){adminModels.textContent='Modeller yüklenemedi'}}
 function openAdmin(){adminCard.scrollIntoView({behavior:'smooth'})}
 async function addSelfMinutes(){try{let n=parseInt(addmins.value||'0');let v=await rpc('admin_add_minutes',{p_user:uid,p_minutes:n,p_note:'Owner self top-up'});showMsg('adminmsg','Yeni bakiye: '+v+' dk · $'+(v*0.50).toFixed(2));await loadMe()}catch(e){showMsg('adminmsg',e.message)}}
 async function createInvite(){try{let c=inviteCode.value.trim();if(c.length<4)throw new Error('Kod en az 4 karakter olsun');await rpc('create_creator_invite',{p_code:c,p_days:7});showMsg('adminmsg','Model davet kodu aktif: '+c+' (7 gün)')}catch(e){showMsg('adminmsg',e.message)}}
-async function requestCall(cid,nm,rate){try{currentCreator={id:cid,name:nm,rate:rate};let c=await rpc('request_private_call',{p_creator:cid});currentCall=c;waiting.classList.remove('hidden');waitingText.textContent=nm+' kabul etsin diye bekleniyor… · $0.50/dk';clearInterval(waitTimer);waitTimer=setInterval(checkWaiting,1200);}catch(e){alert(e.message)}}
-async function checkWaiting(){if(!currentCall)return;try{let a=await req('/rest/v1/private_calls?id=eq.'+currentCall.id+'&select=*');let c=a[0];if(!c)return;if(c.state==='accepted'||c.state==='active'){clearInterval(waitTimer);waiting.classList.add('hidden');currentCall=c;await startViewerCall()}else if(c.state==='declined'||c.state==='ended'||c.state==='cancelled'){clearInterval(waitTimer);waiting.classList.add('hidden');alert('Çağrı '+c.state);currentCall=null;}}catch(e){}}
-async function cancelWaiting(){if(currentCall)try{await rpc('end_private_call',{p_call:currentCall.id,p_reason:'viewer_cancel'})}catch(e){} clearInterval(waitTimer);waiting.classList.add('hidden');currentCall=null}
-async function startViewerCall(){try{currentCall=await rpc('start_private_call',{p_call:currentCall.id});callScreen.classList.remove('hidden');callName.textContent=currentCreator.name;callStarted=Date.now();clockTimer=setInterval(updateClock,1000);billTimer=setInterval(settle,5000);await setupPeer(true);}catch(e){alert('Görüşme başlatılamadı: '+e.message);endCall()}}
+async function requestCall(cid,nm,rate){try{currentCreator={id:cid,name:nm,rate:1};let c=await rpc('request_private_call',{p_creator:cid});currentCall=c;waiting.classList.remove('hidden');waitingText.textContent=nm+' kabul etsin diye bekleniyor… · $0.50/dk';clearInterval(waitTimer);clearTimeout(waitingTimeout);waitTimer=setInterval(checkWaiting,1000);waitingTimeout=setTimeout(()=>cancelWaiting('request_timeout'),45000);}catch(e){alert(e.message)}}
+async function checkWaiting(){if(!currentCall)return;try{let a=await req('/rest/v1/private_calls?id=eq.'+currentCall.id+'&select=*');let c=a[0];if(!c)return;if(c.state==='accepted'||c.state==='active'){clearInterval(waitTimer);clearTimeout(waitingTimeout);waiting.classList.add('hidden');currentCall=c;await startViewerCall()}else if(c.state==='declined'||c.state==='ended'||c.state==='cancelled'){clearInterval(waitTimer);clearTimeout(waitingTimeout);waiting.classList.add('hidden');alert('Çağrı '+(c.end_reason||c.state));currentCall=null;}}catch(e){}}
+async function cancelWaiting(reason='viewer_cancel'){if(currentCall)try{await rpc('end_private_call',{p_call:currentCall.id,p_reason:reason})}catch(e){} clearInterval(waitTimer);clearTimeout(waitingTimeout);waiting.classList.add('hidden');currentCall=null}
+async function startViewerCall(){try{callScreen.classList.remove('hidden');callName.textContent=currentCreator.name;callTime.textContent='0:00';callCost.textContent='$0.00';billingStarted=false;callStarted=0;await setupPeer(true);clearTimeout(connectTimeout);connectTimeout=setTimeout(()=>{if(!billingStarted){alert('Görüntü bağlantısı kurulamadı.');endCall('connect_timeout')}},55000);}catch(e){alert('Görüşme başlatılamadı: '+e.message);endCall('media_error')}}
+async function activateCall(){if(billingStarted||!currentCall)return;try{let c=await rpc('start_private_call',{p_call:currentCall.id});if(c.state==='active'){currentCall=c;billingStarted=true;callStarted=Date.now();clearTimeout(connectTimeout);clearInterval(clockTimer);clearInterval(billTimer);clockTimer=setInterval(updateClock,1000);billTimer=setInterval(settle,5000);updateClock();}}catch(e){callState.textContent='Başlatma hata'}}
 function updateClock(){let s=Math.floor((Date.now()-callStarted)/1000),m=Math.floor(s/60);callTime.textContent=m+':'+String(s%60).padStart(2,'0');if(currentCall){let mins=Math.ceil(Math.max(1,s)/60);callCost.textContent='$'+(mins*0.50).toFixed(2)+' · '+mins+' dk'}}
-async function settle(){if(!currentCall)return;try{let c=await rpc('settle_private_call',{p_call:currentCall.id});currentCall=c;await loadMe();if(c.state==='ended'){alert('Görüşme sona erdi: '+(c.end_reason||''));cleanupCall()}}catch(e){}}
+async function settle(){if(!currentCall||!billingStarted||currentCall.state!=='active')return;try{let c=await rpc('settle_private_call',{p_call:currentCall.id});currentCall=c;await loadMe();if(c.state==='ended'){alert('Görüşme sona erdi: '+(c.end_reason||''));cleanupCall()}}catch(e){callState.textContent='Ücret hata'}}
 async function setupPeer(offerer){
  if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia)throw new Error('WebRTC kamera API yok');
  callState.textContent='Kamera açılıyor';
@@ -101,7 +103,7 @@ async function setupPeer(offerer){
  pc=new RTCPeerConnection({iceServers:[{urls:'stun:stun.l.google.com:19302'},{urls:'stun:stun1.l.google.com:19302'}]});
  localStream.getTracks().forEach(t=>pc.addTrack(t,localStream));
  pc.ontrack=e=>{remoteVideo.srcObject=e.streams[0];callState.textContent='Bağlandı'};
- pc.onconnectionstatechange=()=>{if(pc)callState.textContent='RTC '+pc.connectionState};
+ pc.onconnectionstatechange=()=>{if(!pc)return;callState.textContent='RTC '+pc.connectionState;if(pc.connectionState==='connected')activateCall();};
  pc.oniceconnectionstatechange=()=>{if(pc&&pc.iceConnectionState==='failed')callState.textContent='ICE failed'};
  pc.onicecandidate=e=>{if(e.candidate)postSignal('ice',e.candidate.toJSON()).catch(err=>callState.textContent='ICE yazma hatası')};
  seenSignals.clear();queuedIce=[];clearInterval(signalTimer);signalTimer=setInterval(pollSignals,700);
@@ -110,11 +112,13 @@ async function setupPeer(offerer){
 async function postSignal(type,payload){await req('/rest/v1/call_signals',{method:'POST',headers:h({'Prefer':'return=minimal'}),body:JSON.stringify({call_id:currentCall.id,sender_id:uid,signal_type:type,payload:payload})})}
 async function pollSignals(){if(!currentCall||!pc)return;try{let a=await req('/rest/v1/call_signals?call_id=eq.'+currentCall.id+'&sender_id=neq.'+uid+'&order=id.asc&select=*');for(let s of a){if(seenSignals.has(s.id))continue;seenSignals.add(s.id);if(s.signal_type==='answer'&&!pc.remoteDescription){await pc.setRemoteDescription(new RTCSessionDescription(s.payload));callState.textContent='Cevap alındı';await flushIce()}else if(s.signal_type==='ice'){if(pc.remoteDescription)await pc.addIceCandidate(new RTCIceCandidate(s.payload));else queuedIce.push(s.payload)}}}catch(e){callState.textContent='Sinyal hata: '+e.message}}
 async function flushIce(){for(let c of queuedIce)try{await pc.addIceCandidate(new RTCIceCandidate(c))}catch(e){} queuedIce=[]}
-async function openGift(){giftModal.classList.remove('hidden');try{let a=await req('/rest/v1/gifts?active=eq.true&order=sort_order&select=*');gifts.innerHTML='';a.forEach(g=>{let b=document.createElement('button');b.className='secondary';b.style='width:100%;margin:6px 0';b.textContent=g.emoji+' '+g.name+' — '+g.price_minutes+' dk · $'+(g.price_minutes*0.50).toFixed(2);b.onclick=()=>sendGift(g.id);gifts.appendChild(b)})}catch(e){}}
+async function openGift(){if(!currentCall||currentCall.state!=='active'){alert('Önce görüntülü bağlantı kurulmalı.');return}giftModal.classList.remove('hidden');try{let a=await req('/rest/v1/gifts?active=eq.true&order=sort_order&select=*');gifts.innerHTML='';a.forEach(g=>{let b=document.createElement('button');b.className='secondary';b.style='width:100%;margin:6px 0';b.textContent=g.emoji+' '+g.name+' — '+g.price_minutes+' dk · $'+(g.price_minutes*0.50).toFixed(2);b.onclick=()=>sendGift(g.id);gifts.appendChild(b)})}catch(e){}}
 function closeGift(){giftModal.classList.add('hidden')}
 async function sendGift(id){try{await rpc('send_gift',{p_creator:currentCreator.id,p_gift:id,p_call:currentCall.id});closeGift();await loadMe();alert('Hediye gönderildi.')}catch(e){alert(e.message)}}
-async function endCall(){if(currentCall)try{await rpc('end_private_call',{p_call:currentCall.id,p_reason:'viewer_ended'})}catch(e){} cleanupCall()}
-function cleanupCall(){clearInterval(signalTimer);clearInterval(billTimer);clearInterval(clockTimer);if(pc){pc.close();pc=null}if(localStream){localStream.getTracks().forEach(t=>t.stop());localStream=null}remoteVideo.srcObject=null;localVideo.srcObject=null;callScreen.classList.add('hidden');currentCall=null;currentCreator=null;loadMe()}
+async function toggleMute(){if(!localStream)return;muted=!muted;localStream.getAudioTracks().forEach(t=>t.enabled=!muted);muteBtn.textContent=muted?'🔇 Sessiz':'🎙 Ses'}
+async function flipCamera(){if(!localStream)return;try{facingMode=facingMode==='user'?'environment':'user';let ns=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:facingMode}},audio:false});let nt=ns.getVideoTracks()[0];let sender=pc&&pc.getSenders().find(s=>s.track&&s.track.kind==='video');if(sender)await sender.replaceTrack(nt);let old=localStream.getVideoTracks()[0];if(old){localStream.removeTrack(old);old.stop()}localStream.addTrack(nt);localVideo.srcObject=null;localVideo.srcObject=localStream;}catch(e){alert('Kamera değiştirilemedi')}}
+async function endCall(reason='viewer_ended'){if(currentCall)try{await rpc('end_private_call',{p_call:currentCall.id,p_reason:reason})}catch(e){} cleanupCall()}
+function cleanupCall(){clearInterval(signalTimer);clearInterval(billTimer);clearInterval(clockTimer);clearTimeout(connectTimeout);billingStarted=false;callStarted=0;muted=false;facingMode='user';if(pc){pc.close();pc=null}if(localStream){localStream.getTracks().forEach(t=>t.stop());localStream=null}remoteVideo.srcObject=null;localVideo.srcObject=null;callScreen.classList.add('hidden');currentCall=null;currentCreator=null;loadMe();loadHome()}
 function esc(s){return String(s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
 boot();
 </script></body></html>
