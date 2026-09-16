@@ -1,0 +1,32 @@
+name: Build PrivateRoom APK
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+    paths:
+      - 'private-room-android/**'
+      - '.github/workflows/build-private-room-apk.yml'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: private-room-android
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10.2'
+      - run: yes | sdkmanager --licenses >/dev/null
+      - run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+      - run: gradle assembleDebug
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PrivateRoom-debug-apk
+          path: private-room-android/app/build/outputs/apk/debug/app-debug.apk
