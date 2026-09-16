@@ -19,9 +19,9 @@ input{width:100%;border:1px solid #d9d9df;border-radius:14px;padding:14px;margin
 </style></head>
 <body>
 <div id="auth"><div class="logo">PRIVATE<span class="pink">ROOM</span></div><div class="authbox">
-<h2>Giriş / Kayıt</h2><input id="email" type="email" placeholder="E-posta"><input id="pass" type="password" placeholder="Şifre (en az 6)">
-<input id="name" placeholder="Görünen ad"><div class="row"><button class="secondary" onclick="login()">Giriş</button><button class="primary" onclick="signup()">Kayıt ol</button></div>
-<div id="authmsg" class="msg">Yeni kayıtta e-posta doğrulaması istenebilir.</div></div></div>
+<h2>Bağlanıyor…</h2>
+<div id="authmsg" class="msg">Cihaz hesabı hazırlanıyor. E-posta veya şifre gerekmiyor.</div>
+</div></div>
 
 <header><div class="logo">PRIVATE<span class="pink">ROOM</span></div><div class="balance"><span id="bal">0</span> dk</div><button class="plus" onclick="openAdmin()">+</button></header>
 <div class="wrap">
@@ -32,7 +32,7 @@ input{width:100%;border:1px solid #d9d9df;border-radius:14px;padding:14px;margin
   <hr><b>Model davet kodu oluştur</b><input id="inviteCode" placeholder="Örn: MIA-2026"><button class="orange" onclick="createInvite()">Davet kodunu aktif et</button>
   <div id="adminmsg" class="msg"></div>
  </div>
- <div class="card"><div class="sectionTitle">Hesap</div><div id="me"></div><button class="dark" onclick="claimAdminPrompt()">Admin kodunu gir</button> <button class="danger" onclick="logout()">Çıkış</button></div>
+ <div class="card"><div class="sectionTitle">Hesap</div><div id="me"></div><button class="dark" onclick="claimAdminPrompt()">Admin kodunu gir</button><div class="small" style="margin-top:10px">Bu cihaz otomatik oturumla bağlı.</div></div>
 </div>
 
 <div id="waiting" class="modal hidden"><div class="modalBox"><h2>Özel oda isteği gönderildi</h2><p id="waitingText">Modelin kabul etmesi bekleniyor…</p><button class="danger" onclick="cancelWaiting()">İptal</button></div></div>
@@ -55,13 +55,41 @@ function h(extra){return Object.assign({'apikey':KEY,'Content-Type':'application
 async function req(path,opt){let r=await fetch(URL+path,Object.assign({headers:h()},opt||{}));let tx=await r.text();let data=tx?JSON.parse(tx):null;if(!r.ok)throw new Error((data&&(data.message||data.msg||data.error_description||data.error))||('HTTP '+r.status));return data;}
 async function rpc(name,body){return req('/rest/v1/rpc/'+name,{method:'POST',body:JSON.stringify(body||{})});}
 function showMsg(id,x){document.getElementById(id).textContent=x;}
-async function login(){try{let e=email.value.trim(),p=pass.value;let d=await req('/auth/v1/token?grant_type=password',{method:'POST',body:JSON.stringify({email:e,password:p})});saveSession(d);await boot();}catch(e){showMsg('authmsg',e.message)}}
-async function signup(){try{let d=await req('/auth/v1/signup',{method:'POST',body:JSON.stringify({email:email.value.trim(),password:pass.value,data:{display_name:name.value.trim()||'User'}})});if(d.access_token){saveSession(d);await boot()}else showMsg('authmsg','Kayıt oluşturuldu. E-postadaki doğrulama bağlantısına dokunup sonra giriş yap.');}catch(e){showMsg('authmsg',e.message)}}
-function saveSession(d){token=d.access_token;refresh=d.refresh_token||'';uid=d.user&&d.user.id||uid;localStorage.setItem('token',token);localStorage.setItem('refresh',refresh);localStorage.setItem('uid',uid)}
-function logout(){localStorage.clear();location.reload()}
-async function boot(){if(!token){auth.classList.remove('hidden');return}try{auth.classList.add('hidden');await loadMe();await loadHome();clearInterval(homeTimer);homeTimer=setInterval(loadHome,3500);}catch(e){if((e.message||'').includes('JWT'))logout();}}
+function randomHex(bytes){
+  const a=new Uint8Array(bytes);crypto.getRandomValues(a);
+  return Array.from(a,b=>b.toString(16).padStart(2,'0')).join('');
+}
+async function ensureDeviceAuth(displayName){
+  let deviceId=localStorage.getItem('device_id');
+  let deviceSecret=localStorage.getItem('device_secret');
+  if(!deviceId){deviceId='viewer-'+randomHex(24);localStorage.setItem('device_id',deviceId)}
+  if(!deviceSecret){deviceSecret=randomHex(32);localStorage.setItem('device_secret',deviceSecret)}
+  let r=await fetch(URL+'/functions/v1/device-auth',{
+    method:'POST',
+    headers:{'apikey':KEY,'Content-Type':'application/json'},
+    body:JSON.stringify({device_id:deviceId,device_secret:deviceSecret,display_name:displayName})
+  });
+  let d=await r.json();
+  if(!r.ok)throw new Error(d.error||'Cihaz oturumu açılamadı');
+  token=d.access_token;uid=d.user.id;
+  localStorage.setItem('token',token);localStorage.setItem('uid',uid);
+}
+async function boot(){
+  auth.classList.remove('hidden');
+  try{
+    showMsg('authmsg','Cihaz hesabı hazırlanıyor…');
+    await ensureDeviceAuth('Owner');
+    auth.classList.add('hidden');
+    await loadMe();
+    await loadHome();
+    clearInterval(homeTimer);
+    homeTimer=setInterval(loadHome,3500);
+  }catch(e){
+    showMsg('authmsg','Bağlantı hatası: '+e.message);
+  }
+}
 async function loadMe(){let a=await req('/rest/v1/profiles?id=eq.'+uid+'&select=*');profile=a[0];let w=await req('/rest/v1/wallets?user_id=eq.'+uid+'&select=minute_balance');bal.textContent=w[0]?w[0].minute_balance:0;me.innerHTML='<b>'+esc(profile.display_name)+'</b><br><span class="small">'+esc(profile.role)+'</span>';adminCard.classList.toggle('hidden',profile.role!=='admin');}
-async function loadHome(){try{await loadMe();let a=await req('/rest/v1/creator_profiles?select=user_id,private_rate_minutes,profiles(display_name,is_online)&profiles.is_online=eq.true&profiles.role=eq.creator');creators.innerHTML='';a.filter(x=>x.profiles&&x.profiles.is_online).forEach(x=>{let d=document.createElement('div');d.className='creator';d.onclick=()=>requestCall(x.user_id,x.profiles.display_name,x.private_rate_minutes);d.innerHTML='<b class="dot">● ONLINE</b><h3>'+esc(x.profiles.display_name)+'</h3><div class="rate">'+x.private_rate_minutes+' dk / dakika</div>';creators.appendChild(d)});if(!creators.children.length)creators.innerHTML='<div class="small">Şu an online model yok.</div>';}catch(e){}}
+async function loadHome(){try{await loadMe();let a=await req('/rest/v1/creator_profiles?select=user_id,private_rate_minutes,profiles!inner(display_name,is_online,role)&profiles.is_online=eq.true&profiles.role=eq.creator');creators.innerHTML='';a.filter(x=>x.profiles&&x.profiles.is_online).forEach(x=>{let d=document.createElement('div');d.className='creator';d.onclick=()=>requestCall(x.user_id,x.profiles.display_name,x.private_rate_minutes);d.innerHTML='<b class="dot">● ONLINE</b><h3>'+esc(x.profiles.display_name)+'</h3><div class="rate">'+x.private_rate_minutes+' dk / dakika</div>';creators.appendChild(d)});if(!creators.children.length)creators.innerHTML='<div class="small">Şu an online model yok.</div>';}catch(e){}}
 async function claimAdminPrompt(){let c=prompt('Admin kurulum kodu');if(!c)return;try{await rpc('claim_admin',{p_code:c});await loadMe();alert('Admin yetkisi aktif.')}catch(e){alert(e.message)}}
 function openAdmin(){if(profile&&profile.role==='admin')adminCard.scrollIntoView({behavior:'smooth'});else claimAdminPrompt()}
 async function addSelfMinutes(){try{let n=parseInt(addmins.value||'0');let v=await rpc('admin_add_minutes',{p_user:uid,p_minutes:n,p_note:'Owner self top-up'});showMsg('adminmsg','Yeni bakiye: '+v+' dk');await loadMe()}catch(e){showMsg('adminmsg',e.message)}}
