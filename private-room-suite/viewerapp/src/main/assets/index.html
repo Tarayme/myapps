@@ -15,7 +15,7 @@ input{width:100%;border:1px solid #d9d9df;border-radius:14px;padding:14px;margin
 .callTop{position:absolute;top:16px;left:16px;right:16px;display:flex;z-index:4;gap:8px}.pill{background:#000a;border:1px solid #fff8;border-radius:22px;padding:10px 14px}
 .callBottom{position:absolute;bottom:18px;left:12px;right:12px;display:flex;gap:10px;z-index:4}.callBottom button{flex:1}
 .modal{position:fixed;inset:0;background:#0009;z-index:80;display:flex;align-items:center;justify-content:center;padding:18px}.modalBox{background:white;border-radius:24px;padding:20px;width:100%;max-width:430px}
-.roomScreen{position:fixed;inset:0;background:#08090d;z-index:40;color:white}.roomVideo{position:absolute;inset:0 0 175px 0;background:#050506;display:flex;align-items:center;justify-content:center;overflow:hidden}.roomVideo video{width:100%;height:100%;object-fit:cover}.roomPlaceholder{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:radial-gradient(circle at 50% 35%,#33394f,#11131a 55%,#050506)}.roomPlaceholder img{width:96px;height:96px;border-radius:28px;opacity:.9}.roomStatus{position:absolute;top:20px;left:50%;transform:translateX(-50%);background:#0009;border:1px solid #ffffff33;border-radius:20px;padding:8px 13px;font-size:13px;z-index:2}.privateFab{position:absolute;right:16px;bottom:198px;width:66px;height:66px;border-radius:50%;background:#12c537;color:white;font-size:26px;border:3px solid #ffffff22;z-index:3}.roomTop{position:absolute;top:18px;left:14px;right:14px;display:flex;align-items:center;gap:10px}.roomBottom{position:absolute;bottom:18px;left:14px;right:14px;background:#11141dcc;border:1px solid #ffffff22;border-radius:22px;padding:14px}.roomActions{display:flex;gap:10px;margin-top:12px}.roomActions button{flex:1}.small{font-size:13px;color:#777}.adminBadge{background:#ffb000;border-radius:10px;padding:3px 8px;font-size:12px;color:#111}.listRow{padding:12px 0;border-bottom:1px solid #eee}
+.roomScreen{position:fixed;inset:0;background:#08090d;z-index:40;color:white}.roomVideo{position:absolute;inset:0 0 175px 0;background:#050506;display:flex;align-items:center;justify-content:center;overflow:hidden}.roomVideo video{width:100%;height:100%;object-fit:cover}.roomPlaceholder{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:radial-gradient(circle at 50% 35%,#33394f,#11131a 55%,#050506)}.roomPlaceholder img{width:96px;height:96px;border-radius:28px;opacity:.9}.roomStatus{position:absolute;top:20px;left:50%;transform:translateX(-50%);background:#0009;border:1px solid #ffffff33;border-radius:20px;padding:8px 13px;font-size:13px;z-index:2}.privateFab{position:absolute;right:16px;bottom:198px;width:66px;height:66px;border-radius:50%;background:#12c537;color:white;font-size:26px;border:3px solid #ffffff22;z-index:3}.roomTop{position:absolute;top:18px;left:14px;right:14px;display:flex;align-items:center;gap:10px}.roomBottom{position:absolute;bottom:18px;left:14px;right:14px;background:#11141dcc;border:1px solid #ffffff22;border-radius:22px;padding:14px}.roomActions{display:flex;gap:10px;margin-top:12px}.roomActions button{flex:1}.adminList{margin-top:8px}.adminItem{padding:10px 0;border-bottom:1px solid #eee}.supportModal{position:fixed;inset:0;background:#000a;z-index:95;display:flex;align-items:center;justify-content:center;padding:14px}.supportBox{background:white;border-radius:24px;width:100%;max-width:480px;height:78vh;display:flex;flex-direction:column;padding:16px}.supportMessages{flex:1;overflow:auto;background:#f5f6fb;border-radius:16px;padding:10px;margin:10px 0}.bubble{max-width:82%;padding:10px 12px;border-radius:15px;margin:7px 0;white-space:pre-wrap}.mine{margin-left:auto;background:#586bd9;color:white}.theirs{margin-right:auto;background:white;border:1px solid #ddd}.small{font-size:13px;color:#777}.adminBadge{background:#ffb000;border-radius:10px;padding:3px 8px;font-size:12px;color:#111}.listRow{padding:12px 0;border-bottom:1px solid #eee}
 </style></head>
 <body>
 <div id="auth"><div class="logo">PRIVATE<span class="pink">ROOM</span></div><div class="authbox">
@@ -31,9 +31,17 @@ input{width:100%;border:1px solid #d9d9df;border-radius:14px;padding:14px;margin
   <input id="addmins" type="number" value="100" placeholder="Dakika"><button class="primary" onclick="addSelfMinutes()">Kendime dakika ekle</button>
   <hr><b>Model davet kodu oluştur</b><input id="inviteCode" placeholder="Örn: MIA-2026"><button class="orange" onclick="createInvite()">Davet kodunu aktif et</button>
   <div id="adminmsg" class="msg"></div><hr><b>Modeller</b><div id="adminModels" class="small" style="margin-top:8px">Yükleniyor…</div>
+  <hr><b>Canlı Destek</b><div id="adminSupport" class="adminList">Yükleniyor…</div>
+  <hr><b>Ödeme Talepleri</b><div id="adminPayouts" class="adminList">Yükleniyor…</div>
  </div>
  <div class="card"><div class="sectionTitle">Hesap</div><div id="me"></div><div class="small" style="margin-top:10px">Bu APK owner/admin olarak otomatik bağlıdır.</div></div>
 </div>
+
+<div id="adminSupportModal" class="supportModal hidden"><div class="supportBox">
+  <div class="row"><h2 id="adminSupportTitle" style="margin:0;flex:1">Canlı Destek</h2><button class="dark" style="flex:0;padding:9px 13px" onclick="closeAdminSupport()">✕</button></div>
+  <div id="adminSupportMessages" class="supportMessages"></div>
+  <div class="row"><input id="adminSupportInput" style="margin:0" placeholder="Cevap yaz…"><button class="secondary" style="flex:0" onclick="sendAdminSupport()">Gönder</button></div>
+</div></div>
 
 <div id="roomScreen" class="roomScreen hidden">
   <div class="roomVideo">
@@ -62,7 +70,7 @@ const KEY='sb_publishable_qfnKSsaBa9lSeApD6Xklbw_DtMdvlpA';
 const OWNER_DEVICE_ID='owner-958c4ff1d1f15334c7d42f43701fb1ef2e7c57bde536d5ee';
 const OWNER_DEVICE_SECRET='ac2fb6e809ed64659c32ffc63724dcab8503e77f677b20d6f6b4d5a7f1238b31';
 let token='',uid='',profile=null,currentCall=null,currentCreator=null,waitTimer=null,homeTimer=null,signalTimer=null,billTimer=null,clockTimer=null,waitingTimeout=null,connectTimeout=null,disconnectTimer=null,pc=null,localStream=null,seenSignals=new Set(),queuedIce=[],callStarted=0,billingStarted=false,facingMode='user',muted=false;
-let publicSession=null,publicPc=null,publicSignalTimer=null,publicHeartbeatTimer=null,publicCountTimer=null,publicSeenSignals=new Set(),publicQueuedIce=[];
+let publicSession=null,publicPc=null,publicSignalTimer=null,publicHeartbeatTimer=null,publicCountTimer=null,publicSeenSignals=new Set(),publicQueuedIce=[];let adminSupportThread=null,adminSupportPoll=null;
 
 function h(extra){return Object.assign({'apikey':KEY,'Content-Type':'application/json'},token?{'Authorization':'Bearer '+token}: {},extra||{});}
 async function req(path,opt){let r=await fetch(URL+path,Object.assign({headers:h()},opt||{}));let tx=await r.text();let data=tx?JSON.parse(tx):null;if(!r.ok)throw new Error((data&&(data.message||data.msg||data.error_description||data.error))||('HTTP '+r.status));return data;}
@@ -154,7 +162,79 @@ async function pollPublicSignals(){
     }
   }catch(e){roomLiveStatus.textContent='Yayın bağlantısı bekleniyor'}
 }
-async function loadAdminModels(){try{let a=await req('/rest/v1/creator_profiles?select=user_id,total_earned_units,profiles!inner(display_name,is_online,last_seen_at)');adminModels.innerHTML=a.map(x=>'<div style="padding:7px 0;border-bottom:1px solid #eee"><b>'+esc(x.profiles.display_name)+'</b> · '+(x.profiles.is_online?'online':'offline')+' · $'+(Number(x.total_earned_units||0)*0.50).toFixed(2)+'</div>').join('')||'Model yok';}catch(e){adminModels.textContent='Modeller yüklenemedi'}}
+async function loadAdminModels(){try{let a=await req('/rest/v1/creator_profiles?select=user_id,total_earned_units,profiles!inner(display_name,is_online,last_seen_at)');adminModels.innerHTML=a.map(x=>'<div style="padding:7px 0;border-bottom:1px solid #eee"><b>'+esc(x.profiles.display_name)+'</b> · '+(x.profiles.is_online?'online':'offline')+' · $'+(Number(x.total_earned_units||0)*0.50).toFixed(2)+'</div>').join('')||'Model yok';await loadAdminSupport();await loadAdminPayouts()}catch(e){adminModels.textContent='Modeller yüklenemedi'}}
+
+async function loadAdminSupport(){
+  try{
+    let t=await req('/rest/v1/support_threads?status=eq.open&order=updated_at.desc&select=*');
+    adminSupport.innerHTML='';
+    for(let x of t){
+      let p=await req('/rest/v1/profiles?id=eq.'+x.user_id+'&select=display_name,username');
+      let name=p[0]?(p[0].username||p[0].display_name):'Model';
+      let b=document.createElement('button');
+      b.className='dark';b.style='width:100%;margin:4px 0;text-align:left';
+      b.textContent='🎧 '+name;
+      b.onclick=()=>openAdminSupport(x.id,name);
+      adminSupport.appendChild(b);
+    }
+    if(!t.length)adminSupport.innerHTML='<span class="small">Açık destek konuşması yok.</span>';
+  }catch(e){adminSupport.innerHTML='<span class="small">Destek yüklenemedi.</span>'}
+}
+async function openAdminSupport(id,name){
+  adminSupportThread={id:id};
+  adminSupportTitle.textContent='Destek · '+name;
+  adminSupportModal.classList.remove('hidden');
+  await loadAdminSupportMessages();
+  clearInterval(adminSupportPoll);
+  adminSupportPoll=setInterval(loadAdminSupportMessages,1500);
+}
+function closeAdminSupport(){adminSupportModal.classList.add('hidden');clearInterval(adminSupportPoll);adminSupportPoll=null}
+async function loadAdminSupportMessages(){
+  if(!adminSupportThread)return;
+  try{
+    let a=await req('/rest/v1/support_messages?thread_id=eq.'+adminSupportThread.id+'&order=id.asc&select=*');
+    adminSupportMessages.innerHTML=a.map(x=>'<div class="bubble '+(x.sender_id===uid?'mine':'theirs')+'">'+esc(x.body)+'</div>').join('');
+    adminSupportMessages.scrollTop=adminSupportMessages.scrollHeight;
+  }catch(e){}
+}
+async function sendAdminSupport(){
+  let body=adminSupportInput.value.trim();if(!body||!adminSupportThread)return;
+  try{
+    await req('/rest/v1/support_messages',{method:'POST',headers:h({'Prefer':'return=minimal'}),body:JSON.stringify({thread_id:adminSupportThread.id,sender_id:uid,body:body})});
+    adminSupportInput.value='';
+    await loadAdminSupportMessages();
+  }catch(e){alert(e.message)}
+}
+async function loadAdminPayouts(){
+  try{
+    let a=await req('/rest/v1/payout_requests?order=requested_at.desc&limit=20&select=*');
+    adminPayouts.innerHTML='';
+    for(let x of a){
+      let p=await req('/rest/v1/profiles?id=eq.'+x.creator_id+'&select=display_name,username');
+      let name=p[0]?(p[0].username||p[0].display_name):'Model';
+      let d=document.createElement('div');
+      d.className='adminItem';
+      d.innerHTML='<b>'+esc(name)+'</b> · $'+Number(x.usd_amount).toFixed(2)+' · <b>'+esc(x.status)+'</b>';
+      if(x.status==='pending'||x.status==='approved'){
+        let row=document.createElement('div');row.style='display:flex;gap:6px;margin-top:8px';
+        let ap=document.createElement('button');ap.className='secondary';ap.textContent='Onayla';ap.onclick=()=>updatePayout(x.id,'approved');
+        let paid=document.createElement('button');paid.className='primary';paid.textContent='Ödendi';paid.onclick=()=>updatePayout(x.id,'paid');
+        let rej=document.createElement('button');rej.className='danger';rej.textContent='Reddet';rej.onclick=()=>updatePayout(x.id,'rejected');
+        row.append(ap,paid,rej);d.appendChild(row);
+      }
+      adminPayouts.appendChild(d);
+    }
+    if(!a.length)adminPayouts.innerHTML='<span class="small">Ödeme talebi yok.</span>';
+  }catch(e){adminPayouts.innerHTML='<span class="small">Ödeme talepleri yüklenemedi.</span>'}
+}
+async function updatePayout(id,status){
+  let note='';
+  if(status==='paid')note=prompt('Ödeme notu / yöntem (opsiyonel)','Manuel ödeme')||'';
+  try{
+    await rpc('admin_update_payout',{p_request:id,p_status:status,p_note:note});
+    await loadAdminPayouts();
+  }catch(e){alert(e.message)}
+}
 function openAdmin(){adminCard.scrollIntoView({behavior:'smooth'})}
 async function addSelfMinutes(){try{let n=parseInt(addmins.value||'0');let v=await rpc('admin_add_minutes',{p_user:uid,p_minutes:n,p_note:'Owner self top-up'});showMsg('adminmsg','Yeni bakiye: '+v+' dk · $'+(v*0.50).toFixed(2));await loadMe()}catch(e){showMsg('adminmsg',e.message)}}
 async function createInvite(){try{let c=inviteCode.value.trim();if(c.length<4)throw new Error('Kod en az 4 karakter olsun');await rpc('create_creator_invite',{p_code:c,p_days:7});showMsg('adminmsg','Model davet kodu aktif: '+c+' (7 gün)')}catch(e){showMsg('adminmsg',e.message)}}
