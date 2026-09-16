@@ -20,19 +20,19 @@ input{width:100%;border:1px solid #d9d9df;border-radius:14px;padding:14px;margin
 <body>
 <div id="auth"><div class="logo">PRIVATE<span class="pink">ROOM</span></div><div class="authbox">
 <h2>Bağlanıyor…</h2>
-<div id="authmsg" class="msg">Cihaz hesabı hazırlanıyor. E-posta veya şifre gerekmiyor.</div>
+<div id="authmsg" class="msg">Owner hesabı hazırlanıyor.</div>
 </div></div>
 
 <header><div class="logo">PRIVATE<span class="pink">ROOM</span></div><div class="balance"><span id="bal">0</span> dk</div><button class="plus" onclick="openAdmin()">+</button></header>
 <div class="wrap">
  <div class="card"><div class="sectionTitle">👑 Online Yayıncılar</div><div id="creators" class="grid"></div></div>
- <div id="adminCard" class="card hidden"><div class="sectionTitle">Admin Panel <span class="adminBadge">OWNER</span></div>
+ <div id="adminCard" class="card"><div class="sectionTitle">Admin Panel <span class="adminBadge">OWNER</span></div>
   <div class="small">Dakika bakiyesi sunucuda tutulur. Buradan kendine ekleyebilirsin.</div>
   <input id="addmins" type="number" value="100" placeholder="Dakika"><button class="primary" onclick="addSelfMinutes()">Kendime dakika ekle</button>
   <hr><b>Model davet kodu oluştur</b><input id="inviteCode" placeholder="Örn: MIA-2026"><button class="orange" onclick="createInvite()">Davet kodunu aktif et</button>
   <div id="adminmsg" class="msg"></div>
  </div>
- <div class="card"><div class="sectionTitle">Hesap</div><div id="me"></div><button class="dark" onclick="claimAdminPrompt()">Admin kodunu gir</button><div class="small" style="margin-top:10px">Bu cihaz otomatik oturumla bağlı.</div></div>
+ <div class="card"><div class="sectionTitle">Hesap</div><div id="me"></div><div class="small" style="margin-top:10px">Bu APK owner/admin olarak otomatik bağlıdır.</div></div>
 </div>
 
 <div id="waiting" class="modal hidden"><div class="modalBox"><h2>Özel oda isteği gönderildi</h2><p id="waitingText">Modelin kabul etmesi bekleniyor…</p><button class="danger" onclick="cancelWaiting()">İptal</button></div></div>
@@ -48,37 +48,30 @@ input{width:100%;border:1px solid #d9d9df;border-radius:14px;padding:14px;margin
 <script>
 const URL='https://svjbssrjvwavxucjjklv.supabase.co';
 const KEY='sb_publishable_qfnKSsaBa9lSeApD6Xklbw_DtMdvlpA';
-let token=localStorage.getItem('token')||'', refresh=localStorage.getItem('refresh')||'', uid=localStorage.getItem('uid')||'';
-let profile=null,currentCall=null,currentCreator=null,waitTimer=null,homeTimer=null,signalTimer=null,billTimer=null,clockTimer=null,pc=null,localStream=null,seenSignals=new Set(),queuedIce=[],callStarted=0;
+const OWNER_DEVICE_ID='owner-958c4ff1d1f15334c7d42f43701fb1ef2e7c57bde536d5ee';
+const OWNER_DEVICE_SECRET='ac2fb6e809ed64659c32ffc63724dcab8503e77f677b20d6f6b4d5a7f1238b31';
+let token='',uid='',profile=null,currentCall=null,currentCreator=null,waitTimer=null,homeTimer=null,signalTimer=null,billTimer=null,clockTimer=null,pc=null,localStream=null,seenSignals=new Set(),queuedIce=[],callStarted=0;
 
 function h(extra){return Object.assign({'apikey':KEY,'Content-Type':'application/json'},token?{'Authorization':'Bearer '+token}: {},extra||{});}
 async function req(path,opt){let r=await fetch(URL+path,Object.assign({headers:h()},opt||{}));let tx=await r.text();let data=tx?JSON.parse(tx):null;if(!r.ok)throw new Error((data&&(data.message||data.msg||data.error_description||data.error))||('HTTP '+r.status));return data;}
 async function rpc(name,body){return req('/rest/v1/rpc/'+name,{method:'POST',body:JSON.stringify(body||{})});}
 function showMsg(id,x){document.getElementById(id).textContent=x;}
-function randomHex(bytes){
-  const a=new Uint8Array(bytes);crypto.getRandomValues(a);
-  return Array.from(a,b=>b.toString(16).padStart(2,'0')).join('');
-}
-async function ensureDeviceAuth(displayName){
-  let deviceId=localStorage.getItem('device_id');
-  let deviceSecret=localStorage.getItem('device_secret');
-  if(!deviceId){deviceId='viewer-'+randomHex(24);localStorage.setItem('device_id',deviceId)}
-  if(!deviceSecret){deviceSecret=randomHex(32);localStorage.setItem('device_secret',deviceSecret)}
+
+async function ensureOwnerAuth(){
   let r=await fetch(URL+'/functions/v1/device-auth',{
     method:'POST',
     headers:{'apikey':KEY,'Content-Type':'application/json'},
-    body:JSON.stringify({device_id:deviceId,device_secret:deviceSecret,display_name:displayName})
+    body:JSON.stringify({device_id:OWNER_DEVICE_ID,device_secret:OWNER_DEVICE_SECRET,display_name:'Owner'})
   });
   let d=await r.json();
-  if(!r.ok)throw new Error(d.error||'Cihaz oturumu açılamadı');
+  if(!r.ok)throw new Error(d.error||'Owner oturumu açılamadı');
   token=d.access_token;uid=d.user.id;
-  localStorage.setItem('token',token);localStorage.setItem('uid',uid);
 }
 async function boot(){
   auth.classList.remove('hidden');
   try{
-    showMsg('authmsg','Cihaz hesabı hazırlanıyor…');
-    await ensureDeviceAuth('Owner');
+    showMsg('authmsg','Owner hesabına bağlanılıyor…');
+    await ensureOwnerAuth();
     auth.classList.add('hidden');
     await loadMe();
     await loadHome();
@@ -88,10 +81,9 @@ async function boot(){
     showMsg('authmsg','Bağlantı hatası: '+e.message);
   }
 }
-async function loadMe(){let a=await req('/rest/v1/profiles?id=eq.'+uid+'&select=*');profile=a[0];let w=await req('/rest/v1/wallets?user_id=eq.'+uid+'&select=minute_balance');bal.textContent=w[0]?w[0].minute_balance:0;me.innerHTML='<b>'+esc(profile.display_name)+'</b><br><span class="small">'+esc(profile.role)+'</span>';adminCard.classList.toggle('hidden',profile.role!=='admin');}
+async function loadMe(){let a=await req('/rest/v1/profiles?id=eq.'+uid+'&select=*');profile=a[0];let w=await req('/rest/v1/wallets?user_id=eq.'+uid+'&select=minute_balance');bal.textContent=w[0]?w[0].minute_balance:0;me.innerHTML='<b>'+esc(profile.display_name)+'</b><br><span class="small">'+esc(profile.role)+'</span>';}
 async function loadHome(){try{await loadMe();let a=await req('/rest/v1/creator_profiles?select=user_id,private_rate_minutes,profiles!inner(display_name,is_online,role)&profiles.is_online=eq.true&profiles.role=eq.creator');creators.innerHTML='';a.filter(x=>x.profiles&&x.profiles.is_online).forEach(x=>{let d=document.createElement('div');d.className='creator';d.onclick=()=>requestCall(x.user_id,x.profiles.display_name,x.private_rate_minutes);d.innerHTML='<b class="dot">● ONLINE</b><h3>'+esc(x.profiles.display_name)+'</h3><div class="rate">'+x.private_rate_minutes+' dk / dakika</div>';creators.appendChild(d)});if(!creators.children.length)creators.innerHTML='<div class="small">Şu an online model yok.</div>';}catch(e){}}
-async function claimAdminPrompt(){let c=prompt('Admin kurulum kodu');if(!c)return;try{await rpc('claim_admin',{p_code:c});await loadMe();alert('Admin yetkisi aktif.')}catch(e){alert(e.message)}}
-function openAdmin(){if(profile&&profile.role==='admin')adminCard.scrollIntoView({behavior:'smooth'});else claimAdminPrompt()}
+function openAdmin(){adminCard.scrollIntoView({behavior:'smooth'})}
 async function addSelfMinutes(){try{let n=parseInt(addmins.value||'0');let v=await rpc('admin_add_minutes',{p_user:uid,p_minutes:n,p_note:'Owner self top-up'});showMsg('adminmsg','Yeni bakiye: '+v+' dk');await loadMe()}catch(e){showMsg('adminmsg',e.message)}}
 async function createInvite(){try{let c=inviteCode.value.trim();if(c.length<4)throw new Error('Kod en az 4 karakter olsun');await rpc('create_creator_invite',{p_code:c,p_days:7});showMsg('adminmsg','Model davet kodu aktif: '+c+' (7 gün)')}catch(e){showMsg('adminmsg',e.message)}}
 async function requestCall(cid,nm,rate){try{currentCreator={id:cid,name:nm,rate:rate};let c=await rpc('request_private_call',{p_creator:cid});currentCall=c;waiting.classList.remove('hidden');waitingText.textContent=nm+' kabul etsin diye bekleniyor…';clearInterval(waitTimer);waitTimer=setInterval(checkWaiting,1200);}catch(e){alert(e.message)}}
