@@ -41,7 +41,7 @@ input{width:100%;border:1px solid #d9d9df;border-radius:14px;padding:14px;margin
 
 <div id="callScreen" class="hidden">
  <div class="videoBox"><video id="remoteVideo" autoplay playsinline></video><video id="localVideo" class="local" autoplay muted playsinline></video></div>
- <div class="callTop"><div id="callName" class="pill">Özel Oda</div><div id="callTime" class="pill">0:00</div><div id="callCost" class="pill">0 dk</div></div>
+ <div class="callTop"><div id="callName" class="pill">Özel Oda</div><div id="callTime" class="pill">0:00</div><div id="callCost" class="pill">$0.00</div><div id="callState" class="pill">Hazır</div></div>
  <div class="callBottom"><button class="orange" onclick="openGift()">🎁 Hediye</button><button class="danger" onclick="endCall()">Bitir</button></div>
 </div>
 
@@ -84,170 +84,33 @@ async function boot(){
 async function loadMe(){let a=await req('/rest/v1/profiles?id=eq.'+uid+'&select=*');profile=a[0];let w=await req('/rest/v1/wallets?user_id=eq.'+uid+'&select=minute_balance');bal.textContent=w[0]?w[0].minute_balance:0;me.innerHTML='<b>'+esc(profile.display_name)+'</b><br><span class="small">'+esc(profile.role)+'</span>';}
 async function loadHome(){try{await loadMe();let a=await req('/rest/v1/creator_profiles?select=user_id,private_rate_minutes,profiles!inner(display_name,is_online,role)&profiles.is_online=eq.true&profiles.role=eq.creator');creators.innerHTML='';a.filter(x=>x.profiles&&x.profiles.is_online).forEach(x=>{let d=document.createElement('div');d.className='creator';d.onclick=()=>requestCall(x.user_id,x.profiles.display_name,x.private_rate_minutes);d.innerHTML='<b class="dot">● ONLINE</b><h3>'+esc(x.profiles.display_name)+'</h3><div class="rate">$0.50 / dk</div>';creators.appendChild(d)});if(!creators.children.length)creators.innerHTML='<div class="small">Şu an online model yok.</div>';}catch(e){}}
 function openAdmin(){adminCard.scrollIntoView({behavior:'smooth'})}
-async function addSelfMinutes(){try{let n=parseInt(addmins.value||'0');let v=await rpc('admin_add_minutes',{p_user:uid,p_minutes:n,p_note:'Owner self top-up'});showMsg('adminmsg','Yeni bakiye: '+v+' dk · nominal await loadMe()}catch(e){showMsg('adminmsg',e.message)}}
+async function addSelfMinutes(){try{let n=parseInt(addmins.value||'0');let v=await rpc('admin_add_minutes',{p_user:uid,p_minutes:n,p_note:'Owner self top-up'});showMsg('adminmsg','Yeni bakiye: '+v+' dk · $'+(v*0.50).toFixed(2));await loadMe()}catch(e){showMsg('adminmsg',e.message)}}
 async function createInvite(){try{let c=inviteCode.value.trim();if(c.length<4)throw new Error('Kod en az 4 karakter olsun');await rpc('create_creator_invite',{p_code:c,p_days:7});showMsg('adminmsg','Model davet kodu aktif: '+c+' (7 gün)')}catch(e){showMsg('adminmsg',e.message)}}
 async function requestCall(cid,nm,rate){try{currentCreator={id:cid,name:nm,rate:rate};let c=await rpc('request_private_call',{p_creator:cid});currentCall=c;waiting.classList.remove('hidden');waitingText.textContent=nm+' kabul etsin diye bekleniyor… · $0.50/dk';clearInterval(waitTimer);waitTimer=setInterval(checkWaiting,1200);}catch(e){alert(e.message)}}
 async function checkWaiting(){if(!currentCall)return;try{let a=await req('/rest/v1/private_calls?id=eq.'+currentCall.id+'&select=*');let c=a[0];if(!c)return;if(c.state==='accepted'||c.state==='active'){clearInterval(waitTimer);waiting.classList.add('hidden');currentCall=c;await startViewerCall()}else if(c.state==='declined'||c.state==='ended'||c.state==='cancelled'){clearInterval(waitTimer);waiting.classList.add('hidden');alert('Çağrı '+c.state);currentCall=null;}}catch(e){}}
 async function cancelWaiting(){if(currentCall)try{await rpc('end_private_call',{p_call:currentCall.id,p_reason:'viewer_cancel'})}catch(e){} clearInterval(waitTimer);waiting.classList.add('hidden');currentCall=null}
 async function startViewerCall(){try{currentCall=await rpc('start_private_call',{p_call:currentCall.id});callScreen.classList.remove('hidden');callName.textContent=currentCreator.name;callStarted=Date.now();clockTimer=setInterval(updateClock,1000);billTimer=setInterval(settle,5000);await setupPeer(true);}catch(e){alert('Görüşme başlatılamadı: '+e.message);endCall()}}
-function updateClock(){let s=Math.floor((Date.now()-callStarted)/1000),m=Math.floor(s/60);callTime.textContent=m+':'+String(s%60).padStart(2,'0');if(currentCall){let mins=Math.ceil(Math.max(1,s)/60);callCost.textContent='}
+function updateClock(){let s=Math.floor((Date.now()-callStarted)/1000),m=Math.floor(s/60);callTime.textContent=m+':'+String(s%60).padStart(2,'0');if(currentCall){let mins=Math.ceil(Math.max(1,s)/60);callCost.textContent='$'+(mins*0.50).toFixed(2)+' · '+mins+' dk'}}
 async function settle(){if(!currentCall)return;try{let c=await rpc('settle_private_call',{p_call:currentCall.id});currentCall=c;await loadMe();if(c.state==='ended'){alert('Görüşme sona erdi: '+(c.end_reason||''));cleanupCall()}}catch(e){}}
 async function setupPeer(offerer){
- localStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'user'},audio:true});localVideo.srcObject=localStream;
+ if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia)throw new Error('WebRTC kamera API yok');
+ callState.textContent='Kamera açılıyor';
+ localStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'user'},audio:true});
+ localVideo.srcObject=localStream;
+ callState.textContent='Sinyal hazırlanıyor';
  pc=new RTCPeerConnection({iceServers:[{urls:'stun:stun.l.google.com:19302'},{urls:'stun:stun1.l.google.com:19302'}]});
- localStream.getTracks().forEach(t=>pc.addTrack(t,localStream));pc.ontrack=e=>{remoteVideo.srcObject=e.streams[0]};pc.onicecandidate=e=>{if(e.candidate)postSignal('ice',e.candidate.toJSON())};
+ localStream.getTracks().forEach(t=>pc.addTrack(t,localStream));
+ pc.ontrack=e=>{remoteVideo.srcObject=e.streams[0];callState.textContent='Bağlandı'};
+ pc.onconnectionstatechange=()=>{if(pc)callState.textContent='RTC '+pc.connectionState};
+ pc.oniceconnectionstatechange=()=>{if(pc&&pc.iceConnectionState==='failed')callState.textContent='ICE failed'};
+ pc.onicecandidate=e=>{if(e.candidate)postSignal('ice',e.candidate.toJSON()).catch(err=>callState.textContent='ICE yazma hatası')};
  seenSignals.clear();queuedIce=[];clearInterval(signalTimer);signalTimer=setInterval(pollSignals,700);
- if(offerer){let o=await pc.createOffer();await pc.setLocalDescription(o);await postSignal('offer',o)}
+ if(offerer){let o=await pc.createOffer();await pc.setLocalDescription(o);await postSignal('offer',o);callState.textContent='Model bekleniyor'}
 }
 async function postSignal(type,payload){await req('/rest/v1/call_signals',{method:'POST',headers:h({'Prefer':'return=minimal'}),body:JSON.stringify({call_id:currentCall.id,sender_id:uid,signal_type:type,payload:payload})})}
-async function pollSignals(){if(!currentCall||!pc)return;try{let a=await req('/rest/v1/call_signals?call_id=eq.'+currentCall.id+'&sender_id=neq.'+uid+'&order=id.asc&select=*');for(let s of a){if(seenSignals.has(s.id))continue;seenSignals.add(s.id);if(s.signal_type==='answer'&&!pc.remoteDescription){await pc.setRemoteDescription(new RTCSessionDescription(s.payload));await flushIce()}else if(s.signal_type==='ice'){if(pc.remoteDescription)await pc.addIceCandidate(new RTCIceCandidate(s.payload));else queuedIce.push(s.payload)}}}catch(e){}}
+async function pollSignals(){if(!currentCall||!pc)return;try{let a=await req('/rest/v1/call_signals?call_id=eq.'+currentCall.id+'&sender_id=neq.'+uid+'&order=id.asc&select=*');for(let s of a){if(seenSignals.has(s.id))continue;seenSignals.add(s.id);if(s.signal_type==='answer'&&!pc.remoteDescription){await pc.setRemoteDescription(new RTCSessionDescription(s.payload));callState.textContent='Cevap alındı';await flushIce()}else if(s.signal_type==='ice'){if(pc.remoteDescription)await pc.addIceCandidate(new RTCIceCandidate(s.payload));else queuedIce.push(s.payload)}}}catch(e){callState.textContent='Sinyal hata: '+e.message}}
 async function flushIce(){for(let c of queuedIce)try{await pc.addIceCandidate(new RTCIceCandidate(c))}catch(e){} queuedIce=[]}
-async function openGift(){giftModal.classList.remove('hidden');try{let a=await req('/rest/v1/gifts?active=eq.true&order=sort_order&select=*');gifts.innerHTML='';a.forEach(g=>{let b=document.createElement('button');b.className='secondary';b.style='width:100%;margin:6px 0';b.textContent=g.emoji+' '+g.name+' — '+g.price_minutes+' dk · b.onclick=()=>sendGift(g.id);gifts.appendChild(b)})}catch(e){}}
-function closeGift(){giftModal.classList.add('hidden')}
-async function sendGift(id){try{await rpc('send_gift',{p_creator:currentCreator.id,p_gift:id,p_call:currentCall.id});closeGift();await loadMe();alert('Hediye gönderildi.')}catch(e){alert(e.message)}}
-async function endCall(){if(currentCall)try{await rpc('end_private_call',{p_call:currentCall.id,p_reason:'viewer_ended'})}catch(e){} cleanupCall()}
-function cleanupCall(){clearInterval(signalTimer);clearInterval(billTimer);clearInterval(clockTimer);if(pc){pc.close();pc=null}if(localStream){localStream.getTracks().forEach(t=>t.stop());localStream=null}remoteVideo.srcObject=null;localVideo.srcObject=null;callScreen.classList.add('hidden');currentCall=null;currentCreator=null;loadMe()}
-function esc(s){return String(s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
-boot();
-</script></body></html>+(v*0.50).toFixed(2));await loadMe()}catch(e){showMsg('adminmsg',e.message)}}
-async function createInvite(){try{let c=inviteCode.value.trim();if(c.length<4)throw new Error('Kod en az 4 karakter olsun');await rpc('create_creator_invite',{p_code:c,p_days:7});showMsg('adminmsg','Model davet kodu aktif: '+c+' (7 gün)')}catch(e){showMsg('adminmsg',e.message)}}
-async function requestCall(cid,nm,rate){try{currentCreator={id:cid,name:nm,rate:rate};let c=await rpc('request_private_call',{p_creator:cid});currentCall=c;waiting.classList.remove('hidden');waitingText.textContent=nm+' kabul etsin diye bekleniyor…';clearInterval(waitTimer);waitTimer=setInterval(checkWaiting,1200);}catch(e){alert(e.message)}}
-async function checkWaiting(){if(!currentCall)return;try{let a=await req('/rest/v1/private_calls?id=eq.'+currentCall.id+'&select=*');let c=a[0];if(!c)return;if(c.state==='accepted'||c.state==='active'){clearInterval(waitTimer);waiting.classList.add('hidden');currentCall=c;await startViewerCall()}else if(c.state==='declined'||c.state==='ended'||c.state==='cancelled'){clearInterval(waitTimer);waiting.classList.add('hidden');alert('Çağrı '+c.state);currentCall=null;}}catch(e){}}
-async function cancelWaiting(){if(currentCall)try{await rpc('end_private_call',{p_call:currentCall.id,p_reason:'viewer_cancel'})}catch(e){} clearInterval(waitTimer);waiting.classList.add('hidden');currentCall=null}
-async function startViewerCall(){try{currentCall=await rpc('start_private_call',{p_call:currentCall.id});callScreen.classList.remove('hidden');callName.textContent=currentCreator.name;callStarted=Date.now();clockTimer=setInterval(updateClock,1000);billTimer=setInterval(settle,5000);await setupPeer(true);}catch(e){alert('Görüşme başlatılamadı: '+e.message);endCall()}}
-function updateClock(){let s=Math.floor((Date.now()-callStarted)/1000),m=Math.floor(s/60);callTime.textContent=m+':'+String(s%60).padStart(2,'0');if(currentCall)callCost.textContent=(Math.ceil(Math.max(1,s)/60)*currentCall.rate_minutes)+' dk'}
-async function settle(){if(!currentCall)return;try{let c=await rpc('settle_private_call',{p_call:currentCall.id});currentCall=c;await loadMe();if(c.state==='ended'){alert('Görüşme sona erdi: '+(c.end_reason||''));cleanupCall()}}catch(e){}}
-async function setupPeer(offerer){
- localStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'user'},audio:true});localVideo.srcObject=localStream;
- pc=new RTCPeerConnection({iceServers:[{urls:'stun:stun.l.google.com:19302'},{urls:'stun:stun1.l.google.com:19302'}]});
- localStream.getTracks().forEach(t=>pc.addTrack(t,localStream));pc.ontrack=e=>{remoteVideo.srcObject=e.streams[0]};pc.onicecandidate=e=>{if(e.candidate)postSignal('ice',e.candidate.toJSON())};
- seenSignals.clear();queuedIce=[];clearInterval(signalTimer);signalTimer=setInterval(pollSignals,700);
- if(offerer){let o=await pc.createOffer();await pc.setLocalDescription(o);await postSignal('offer',o)}
-}
-async function postSignal(type,payload){await req('/rest/v1/call_signals',{method:'POST',headers:h({'Prefer':'return=minimal'}),body:JSON.stringify({call_id:currentCall.id,sender_id:uid,signal_type:type,payload:payload})})}
-async function pollSignals(){if(!currentCall||!pc)return;try{let a=await req('/rest/v1/call_signals?call_id=eq.'+currentCall.id+'&sender_id=neq.'+uid+'&order=id.asc&select=*');for(let s of a){if(seenSignals.has(s.id))continue;seenSignals.add(s.id);if(s.signal_type==='answer'&&!pc.remoteDescription){await pc.setRemoteDescription(new RTCSessionDescription(s.payload));await flushIce()}else if(s.signal_type==='ice'){if(pc.remoteDescription)await pc.addIceCandidate(new RTCIceCandidate(s.payload));else queuedIce.push(s.payload)}}}catch(e){}}
-async function flushIce(){for(let c of queuedIce)try{await pc.addIceCandidate(new RTCIceCandidate(c))}catch(e){} queuedIce=[]}
-async function openGift(){giftModal.classList.remove('hidden');try{let a=await req('/rest/v1/gifts?active=eq.true&order=sort_order&select=*');gifts.innerHTML='';a.forEach(g=>{let b=document.createElement('button');b.className='secondary';b.style='width:100%;margin:6px 0';b.textContent=g.emoji+' '+g.name+' — '+g.price_minutes+' dk';b.onclick=()=>sendGift(g.id);gifts.appendChild(b)})}catch(e){}}
-function closeGift(){giftModal.classList.add('hidden')}
-async function sendGift(id){try{await rpc('send_gift',{p_creator:currentCreator.id,p_gift:id,p_call:currentCall.id});closeGift();await loadMe();alert('Hediye gönderildi.')}catch(e){alert(e.message)}}
-async function endCall(){if(currentCall)try{await rpc('end_private_call',{p_call:currentCall.id,p_reason:'viewer_ended'})}catch(e){} cleanupCall()}
-function cleanupCall(){clearInterval(signalTimer);clearInterval(billTimer);clearInterval(clockTimer);if(pc){pc.close();pc=null}if(localStream){localStream.getTracks().forEach(t=>t.stop());localStream=null}remoteVideo.srcObject=null;localVideo.srcObject=null;callScreen.classList.add('hidden');currentCall=null;currentCreator=null;loadMe()}
-function esc(s){return String(s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
-boot();
-</script></body></html>+(mins*0.50).toFixed(2)+' · '+mins+' dk'}}
-async function settle(){if(!currentCall)return;try{let c=await rpc('settle_private_call',{p_call:currentCall.id});currentCall=c;await loadMe();if(c.state==='ended'){alert('Görüşme sona erdi: '+(c.end_reason||''));cleanupCall()}}catch(e){}}
-async function setupPeer(offerer){
- localStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'user'},audio:true});localVideo.srcObject=localStream;
- pc=new RTCPeerConnection({iceServers:[{urls:'stun:stun.l.google.com:19302'},{urls:'stun:stun1.l.google.com:19302'}]});
- localStream.getTracks().forEach(t=>pc.addTrack(t,localStream));pc.ontrack=e=>{remoteVideo.srcObject=e.streams[0]};pc.onicecandidate=e=>{if(e.candidate)postSignal('ice',e.candidate.toJSON())};
- seenSignals.clear();queuedIce=[];clearInterval(signalTimer);signalTimer=setInterval(pollSignals,700);
- if(offerer){let o=await pc.createOffer();await pc.setLocalDescription(o);await postSignal('offer',o)}
-}
-async function postSignal(type,payload){await req('/rest/v1/call_signals',{method:'POST',headers:h({'Prefer':'return=minimal'}),body:JSON.stringify({call_id:currentCall.id,sender_id:uid,signal_type:type,payload:payload})})}
-async function pollSignals(){if(!currentCall||!pc)return;try{let a=await req('/rest/v1/call_signals?call_id=eq.'+currentCall.id+'&sender_id=neq.'+uid+'&order=id.asc&select=*');for(let s of a){if(seenSignals.has(s.id))continue;seenSignals.add(s.id);if(s.signal_type==='answer'&&!pc.remoteDescription){await pc.setRemoteDescription(new RTCSessionDescription(s.payload));await flushIce()}else if(s.signal_type==='ice'){if(pc.remoteDescription)await pc.addIceCandidate(new RTCIceCandidate(s.payload));else queuedIce.push(s.payload)}}}catch(e){}}
-async function flushIce(){for(let c of queuedIce)try{await pc.addIceCandidate(new RTCIceCandidate(c))}catch(e){} queuedIce=[]}
-async function openGift(){giftModal.classList.remove('hidden');try{let a=await req('/rest/v1/gifts?active=eq.true&order=sort_order&select=*');gifts.innerHTML='';a.forEach(g=>{let b=document.createElement('button');b.className='secondary';b.style='width:100%;margin:6px 0';b.textContent=g.emoji+' '+g.name+' — '+g.price_minutes+' dk';b.onclick=()=>sendGift(g.id);gifts.appendChild(b)})}catch(e){}}
-function closeGift(){giftModal.classList.add('hidden')}
-async function sendGift(id){try{await rpc('send_gift',{p_creator:currentCreator.id,p_gift:id,p_call:currentCall.id});closeGift();await loadMe();alert('Hediye gönderildi.')}catch(e){alert(e.message)}}
-async function endCall(){if(currentCall)try{await rpc('end_private_call',{p_call:currentCall.id,p_reason:'viewer_ended'})}catch(e){} cleanupCall()}
-function cleanupCall(){clearInterval(signalTimer);clearInterval(billTimer);clearInterval(clockTimer);if(pc){pc.close();pc=null}if(localStream){localStream.getTracks().forEach(t=>t.stop());localStream=null}remoteVideo.srcObject=null;localVideo.srcObject=null;callScreen.classList.add('hidden');currentCall=null;currentCreator=null;loadMe()}
-function esc(s){return String(s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
-boot();
-</script></body></html>+(v*0.50).toFixed(2));await loadMe()}catch(e){showMsg('adminmsg',e.message)}}
-async function createInvite(){try{let c=inviteCode.value.trim();if(c.length<4)throw new Error('Kod en az 4 karakter olsun');await rpc('create_creator_invite',{p_code:c,p_days:7});showMsg('adminmsg','Model davet kodu aktif: '+c+' (7 gün)')}catch(e){showMsg('adminmsg',e.message)}}
-async function requestCall(cid,nm,rate){try{currentCreator={id:cid,name:nm,rate:rate};let c=await rpc('request_private_call',{p_creator:cid});currentCall=c;waiting.classList.remove('hidden');waitingText.textContent=nm+' kabul etsin diye bekleniyor…';clearInterval(waitTimer);waitTimer=setInterval(checkWaiting,1200);}catch(e){alert(e.message)}}
-async function checkWaiting(){if(!currentCall)return;try{let a=await req('/rest/v1/private_calls?id=eq.'+currentCall.id+'&select=*');let c=a[0];if(!c)return;if(c.state==='accepted'||c.state==='active'){clearInterval(waitTimer);waiting.classList.add('hidden');currentCall=c;await startViewerCall()}else if(c.state==='declined'||c.state==='ended'||c.state==='cancelled'){clearInterval(waitTimer);waiting.classList.add('hidden');alert('Çağrı '+c.state);currentCall=null;}}catch(e){}}
-async function cancelWaiting(){if(currentCall)try{await rpc('end_private_call',{p_call:currentCall.id,p_reason:'viewer_cancel'})}catch(e){} clearInterval(waitTimer);waiting.classList.add('hidden');currentCall=null}
-async function startViewerCall(){try{currentCall=await rpc('start_private_call',{p_call:currentCall.id});callScreen.classList.remove('hidden');callName.textContent=currentCreator.name;callStarted=Date.now();clockTimer=setInterval(updateClock,1000);billTimer=setInterval(settle,5000);await setupPeer(true);}catch(e){alert('Görüşme başlatılamadı: '+e.message);endCall()}}
-function updateClock(){let s=Math.floor((Date.now()-callStarted)/1000),m=Math.floor(s/60);callTime.textContent=m+':'+String(s%60).padStart(2,'0');if(currentCall)callCost.textContent=(Math.ceil(Math.max(1,s)/60)*currentCall.rate_minutes)+' dk'}
-async function settle(){if(!currentCall)return;try{let c=await rpc('settle_private_call',{p_call:currentCall.id});currentCall=c;await loadMe();if(c.state==='ended'){alert('Görüşme sona erdi: '+(c.end_reason||''));cleanupCall()}}catch(e){}}
-async function setupPeer(offerer){
- localStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'user'},audio:true});localVideo.srcObject=localStream;
- pc=new RTCPeerConnection({iceServers:[{urls:'stun:stun.l.google.com:19302'},{urls:'stun:stun1.l.google.com:19302'}]});
- localStream.getTracks().forEach(t=>pc.addTrack(t,localStream));pc.ontrack=e=>{remoteVideo.srcObject=e.streams[0]};pc.onicecandidate=e=>{if(e.candidate)postSignal('ice',e.candidate.toJSON())};
- seenSignals.clear();queuedIce=[];clearInterval(signalTimer);signalTimer=setInterval(pollSignals,700);
- if(offerer){let o=await pc.createOffer();await pc.setLocalDescription(o);await postSignal('offer',o)}
-}
-async function postSignal(type,payload){await req('/rest/v1/call_signals',{method:'POST',headers:h({'Prefer':'return=minimal'}),body:JSON.stringify({call_id:currentCall.id,sender_id:uid,signal_type:type,payload:payload})})}
-async function pollSignals(){if(!currentCall||!pc)return;try{let a=await req('/rest/v1/call_signals?call_id=eq.'+currentCall.id+'&sender_id=neq.'+uid+'&order=id.asc&select=*');for(let s of a){if(seenSignals.has(s.id))continue;seenSignals.add(s.id);if(s.signal_type==='answer'&&!pc.remoteDescription){await pc.setRemoteDescription(new RTCSessionDescription(s.payload));await flushIce()}else if(s.signal_type==='ice'){if(pc.remoteDescription)await pc.addIceCandidate(new RTCIceCandidate(s.payload));else queuedIce.push(s.payload)}}}catch(e){}}
-async function flushIce(){for(let c of queuedIce)try{await pc.addIceCandidate(new RTCIceCandidate(c))}catch(e){} queuedIce=[]}
-async function openGift(){giftModal.classList.remove('hidden');try{let a=await req('/rest/v1/gifts?active=eq.true&order=sort_order&select=*');gifts.innerHTML='';a.forEach(g=>{let b=document.createElement('button');b.className='secondary';b.style='width:100%;margin:6px 0';b.textContent=g.emoji+' '+g.name+' — '+g.price_minutes+' dk';b.onclick=()=>sendGift(g.id);gifts.appendChild(b)})}catch(e){}}
-function closeGift(){giftModal.classList.add('hidden')}
-async function sendGift(id){try{await rpc('send_gift',{p_creator:currentCreator.id,p_gift:id,p_call:currentCall.id});closeGift();await loadMe();alert('Hediye gönderildi.')}catch(e){alert(e.message)}}
-async function endCall(){if(currentCall)try{await rpc('end_private_call',{p_call:currentCall.id,p_reason:'viewer_ended'})}catch(e){} cleanupCall()}
-function cleanupCall(){clearInterval(signalTimer);clearInterval(billTimer);clearInterval(clockTimer);if(pc){pc.close();pc=null}if(localStream){localStream.getTracks().forEach(t=>t.stop());localStream=null}remoteVideo.srcObject=null;localVideo.srcObject=null;callScreen.classList.add('hidden');currentCall=null;currentCreator=null;loadMe()}
-function esc(s){return String(s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
-boot();
-</script></body></html>+(g.price_minutes*0.50).toFixed(2);b.onclick=()=>sendGift(g.id);gifts.appendChild(b)})}catch(e){}}
-function closeGift(){giftModal.classList.add('hidden')}
-async function sendGift(id){try{await rpc('send_gift',{p_creator:currentCreator.id,p_gift:id,p_call:currentCall.id});closeGift();await loadMe();alert('Hediye gönderildi.')}catch(e){alert(e.message)}}
-async function endCall(){if(currentCall)try{await rpc('end_private_call',{p_call:currentCall.id,p_reason:'viewer_ended'})}catch(e){} cleanupCall()}
-function cleanupCall(){clearInterval(signalTimer);clearInterval(billTimer);clearInterval(clockTimer);if(pc){pc.close();pc=null}if(localStream){localStream.getTracks().forEach(t=>t.stop());localStream=null}remoteVideo.srcObject=null;localVideo.srcObject=null;callScreen.classList.add('hidden');currentCall=null;currentCreator=null;loadMe()}
-function esc(s){return String(s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
-boot();
-</script></body></html>+(v*0.50).toFixed(2));await loadMe()}catch(e){showMsg('adminmsg',e.message)}}
-async function createInvite(){try{let c=inviteCode.value.trim();if(c.length<4)throw new Error('Kod en az 4 karakter olsun');await rpc('create_creator_invite',{p_code:c,p_days:7});showMsg('adminmsg','Model davet kodu aktif: '+c+' (7 gün)')}catch(e){showMsg('adminmsg',e.message)}}
-async function requestCall(cid,nm,rate){try{currentCreator={id:cid,name:nm,rate:rate};let c=await rpc('request_private_call',{p_creator:cid});currentCall=c;waiting.classList.remove('hidden');waitingText.textContent=nm+' kabul etsin diye bekleniyor…';clearInterval(waitTimer);waitTimer=setInterval(checkWaiting,1200);}catch(e){alert(e.message)}}
-async function checkWaiting(){if(!currentCall)return;try{let a=await req('/rest/v1/private_calls?id=eq.'+currentCall.id+'&select=*');let c=a[0];if(!c)return;if(c.state==='accepted'||c.state==='active'){clearInterval(waitTimer);waiting.classList.add('hidden');currentCall=c;await startViewerCall()}else if(c.state==='declined'||c.state==='ended'||c.state==='cancelled'){clearInterval(waitTimer);waiting.classList.add('hidden');alert('Çağrı '+c.state);currentCall=null;}}catch(e){}}
-async function cancelWaiting(){if(currentCall)try{await rpc('end_private_call',{p_call:currentCall.id,p_reason:'viewer_cancel'})}catch(e){} clearInterval(waitTimer);waiting.classList.add('hidden');currentCall=null}
-async function startViewerCall(){try{currentCall=await rpc('start_private_call',{p_call:currentCall.id});callScreen.classList.remove('hidden');callName.textContent=currentCreator.name;callStarted=Date.now();clockTimer=setInterval(updateClock,1000);billTimer=setInterval(settle,5000);await setupPeer(true);}catch(e){alert('Görüşme başlatılamadı: '+e.message);endCall()}}
-function updateClock(){let s=Math.floor((Date.now()-callStarted)/1000),m=Math.floor(s/60);callTime.textContent=m+':'+String(s%60).padStart(2,'0');if(currentCall)callCost.textContent=(Math.ceil(Math.max(1,s)/60)*currentCall.rate_minutes)+' dk'}
-async function settle(){if(!currentCall)return;try{let c=await rpc('settle_private_call',{p_call:currentCall.id});currentCall=c;await loadMe();if(c.state==='ended'){alert('Görüşme sona erdi: '+(c.end_reason||''));cleanupCall()}}catch(e){}}
-async function setupPeer(offerer){
- localStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'user'},audio:true});localVideo.srcObject=localStream;
- pc=new RTCPeerConnection({iceServers:[{urls:'stun:stun.l.google.com:19302'},{urls:'stun:stun1.l.google.com:19302'}]});
- localStream.getTracks().forEach(t=>pc.addTrack(t,localStream));pc.ontrack=e=>{remoteVideo.srcObject=e.streams[0]};pc.onicecandidate=e=>{if(e.candidate)postSignal('ice',e.candidate.toJSON())};
- seenSignals.clear();queuedIce=[];clearInterval(signalTimer);signalTimer=setInterval(pollSignals,700);
- if(offerer){let o=await pc.createOffer();await pc.setLocalDescription(o);await postSignal('offer',o)}
-}
-async function postSignal(type,payload){await req('/rest/v1/call_signals',{method:'POST',headers:h({'Prefer':'return=minimal'}),body:JSON.stringify({call_id:currentCall.id,sender_id:uid,signal_type:type,payload:payload})})}
-async function pollSignals(){if(!currentCall||!pc)return;try{let a=await req('/rest/v1/call_signals?call_id=eq.'+currentCall.id+'&sender_id=neq.'+uid+'&order=id.asc&select=*');for(let s of a){if(seenSignals.has(s.id))continue;seenSignals.add(s.id);if(s.signal_type==='answer'&&!pc.remoteDescription){await pc.setRemoteDescription(new RTCSessionDescription(s.payload));await flushIce()}else if(s.signal_type==='ice'){if(pc.remoteDescription)await pc.addIceCandidate(new RTCIceCandidate(s.payload));else queuedIce.push(s.payload)}}}catch(e){}}
-async function flushIce(){for(let c of queuedIce)try{await pc.addIceCandidate(new RTCIceCandidate(c))}catch(e){} queuedIce=[]}
-async function openGift(){giftModal.classList.remove('hidden');try{let a=await req('/rest/v1/gifts?active=eq.true&order=sort_order&select=*');gifts.innerHTML='';a.forEach(g=>{let b=document.createElement('button');b.className='secondary';b.style='width:100%;margin:6px 0';b.textContent=g.emoji+' '+g.name+' — '+g.price_minutes+' dk';b.onclick=()=>sendGift(g.id);gifts.appendChild(b)})}catch(e){}}
-function closeGift(){giftModal.classList.add('hidden')}
-async function sendGift(id){try{await rpc('send_gift',{p_creator:currentCreator.id,p_gift:id,p_call:currentCall.id});closeGift();await loadMe();alert('Hediye gönderildi.')}catch(e){alert(e.message)}}
-async function endCall(){if(currentCall)try{await rpc('end_private_call',{p_call:currentCall.id,p_reason:'viewer_ended'})}catch(e){} cleanupCall()}
-function cleanupCall(){clearInterval(signalTimer);clearInterval(billTimer);clearInterval(clockTimer);if(pc){pc.close();pc=null}if(localStream){localStream.getTracks().forEach(t=>t.stop());localStream=null}remoteVideo.srcObject=null;localVideo.srcObject=null;callScreen.classList.add('hidden');currentCall=null;currentCreator=null;loadMe()}
-function esc(s){return String(s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
-boot();
-</script></body></html>+(mins*0.50).toFixed(2)+' · '+mins+' dk'}}
-async function settle(){if(!currentCall)return;try{let c=await rpc('settle_private_call',{p_call:currentCall.id});currentCall=c;await loadMe();if(c.state==='ended'){alert('Görüşme sona erdi: '+(c.end_reason||''));cleanupCall()}}catch(e){}}
-async function setupPeer(offerer){
- localStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'user'},audio:true});localVideo.srcObject=localStream;
- pc=new RTCPeerConnection({iceServers:[{urls:'stun:stun.l.google.com:19302'},{urls:'stun:stun1.l.google.com:19302'}]});
- localStream.getTracks().forEach(t=>pc.addTrack(t,localStream));pc.ontrack=e=>{remoteVideo.srcObject=e.streams[0]};pc.onicecandidate=e=>{if(e.candidate)postSignal('ice',e.candidate.toJSON())};
- seenSignals.clear();queuedIce=[];clearInterval(signalTimer);signalTimer=setInterval(pollSignals,700);
- if(offerer){let o=await pc.createOffer();await pc.setLocalDescription(o);await postSignal('offer',o)}
-}
-async function postSignal(type,payload){await req('/rest/v1/call_signals',{method:'POST',headers:h({'Prefer':'return=minimal'}),body:JSON.stringify({call_id:currentCall.id,sender_id:uid,signal_type:type,payload:payload})})}
-async function pollSignals(){if(!currentCall||!pc)return;try{let a=await req('/rest/v1/call_signals?call_id=eq.'+currentCall.id+'&sender_id=neq.'+uid+'&order=id.asc&select=*');for(let s of a){if(seenSignals.has(s.id))continue;seenSignals.add(s.id);if(s.signal_type==='answer'&&!pc.remoteDescription){await pc.setRemoteDescription(new RTCSessionDescription(s.payload));await flushIce()}else if(s.signal_type==='ice'){if(pc.remoteDescription)await pc.addIceCandidate(new RTCIceCandidate(s.payload));else queuedIce.push(s.payload)}}}catch(e){}}
-async function flushIce(){for(let c of queuedIce)try{await pc.addIceCandidate(new RTCIceCandidate(c))}catch(e){} queuedIce=[]}
-async function openGift(){giftModal.classList.remove('hidden');try{let a=await req('/rest/v1/gifts?active=eq.true&order=sort_order&select=*');gifts.innerHTML='';a.forEach(g=>{let b=document.createElement('button');b.className='secondary';b.style='width:100%;margin:6px 0';b.textContent=g.emoji+' '+g.name+' — '+g.price_minutes+' dk';b.onclick=()=>sendGift(g.id);gifts.appendChild(b)})}catch(e){}}
-function closeGift(){giftModal.classList.add('hidden')}
-async function sendGift(id){try{await rpc('send_gift',{p_creator:currentCreator.id,p_gift:id,p_call:currentCall.id});closeGift();await loadMe();alert('Hediye gönderildi.')}catch(e){alert(e.message)}}
-async function endCall(){if(currentCall)try{await rpc('end_private_call',{p_call:currentCall.id,p_reason:'viewer_ended'})}catch(e){} cleanupCall()}
-function cleanupCall(){clearInterval(signalTimer);clearInterval(billTimer);clearInterval(clockTimer);if(pc){pc.close();pc=null}if(localStream){localStream.getTracks().forEach(t=>t.stop());localStream=null}remoteVideo.srcObject=null;localVideo.srcObject=null;callScreen.classList.add('hidden');currentCall=null;currentCreator=null;loadMe()}
-function esc(s){return String(s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
-boot();
-</script></body></html>+(v*0.50).toFixed(2));await loadMe()}catch(e){showMsg('adminmsg',e.message)}}
-async function createInvite(){try{let c=inviteCode.value.trim();if(c.length<4)throw new Error('Kod en az 4 karakter olsun');await rpc('create_creator_invite',{p_code:c,p_days:7});showMsg('adminmsg','Model davet kodu aktif: '+c+' (7 gün)')}catch(e){showMsg('adminmsg',e.message)}}
-async function requestCall(cid,nm,rate){try{currentCreator={id:cid,name:nm,rate:rate};let c=await rpc('request_private_call',{p_creator:cid});currentCall=c;waiting.classList.remove('hidden');waitingText.textContent=nm+' kabul etsin diye bekleniyor…';clearInterval(waitTimer);waitTimer=setInterval(checkWaiting,1200);}catch(e){alert(e.message)}}
-async function checkWaiting(){if(!currentCall)return;try{let a=await req('/rest/v1/private_calls?id=eq.'+currentCall.id+'&select=*');let c=a[0];if(!c)return;if(c.state==='accepted'||c.state==='active'){clearInterval(waitTimer);waiting.classList.add('hidden');currentCall=c;await startViewerCall()}else if(c.state==='declined'||c.state==='ended'||c.state==='cancelled'){clearInterval(waitTimer);waiting.classList.add('hidden');alert('Çağrı '+c.state);currentCall=null;}}catch(e){}}
-async function cancelWaiting(){if(currentCall)try{await rpc('end_private_call',{p_call:currentCall.id,p_reason:'viewer_cancel'})}catch(e){} clearInterval(waitTimer);waiting.classList.add('hidden');currentCall=null}
-async function startViewerCall(){try{currentCall=await rpc('start_private_call',{p_call:currentCall.id});callScreen.classList.remove('hidden');callName.textContent=currentCreator.name;callStarted=Date.now();clockTimer=setInterval(updateClock,1000);billTimer=setInterval(settle,5000);await setupPeer(true);}catch(e){alert('Görüşme başlatılamadı: '+e.message);endCall()}}
-function updateClock(){let s=Math.floor((Date.now()-callStarted)/1000),m=Math.floor(s/60);callTime.textContent=m+':'+String(s%60).padStart(2,'0');if(currentCall)callCost.textContent=(Math.ceil(Math.max(1,s)/60)*currentCall.rate_minutes)+' dk'}
-async function settle(){if(!currentCall)return;try{let c=await rpc('settle_private_call',{p_call:currentCall.id});currentCall=c;await loadMe();if(c.state==='ended'){alert('Görüşme sona erdi: '+(c.end_reason||''));cleanupCall()}}catch(e){}}
-async function setupPeer(offerer){
- localStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'user'},audio:true});localVideo.srcObject=localStream;
- pc=new RTCPeerConnection({iceServers:[{urls:'stun:stun.l.google.com:19302'},{urls:'stun:stun1.l.google.com:19302'}]});
- localStream.getTracks().forEach(t=>pc.addTrack(t,localStream));pc.ontrack=e=>{remoteVideo.srcObject=e.streams[0]};pc.onicecandidate=e=>{if(e.candidate)postSignal('ice',e.candidate.toJSON())};
- seenSignals.clear();queuedIce=[];clearInterval(signalTimer);signalTimer=setInterval(pollSignals,700);
- if(offerer){let o=await pc.createOffer();await pc.setLocalDescription(o);await postSignal('offer',o)}
-}
-async function postSignal(type,payload){await req('/rest/v1/call_signals',{method:'POST',headers:h({'Prefer':'return=minimal'}),body:JSON.stringify({call_id:currentCall.id,sender_id:uid,signal_type:type,payload:payload})})}
-async function pollSignals(){if(!currentCall||!pc)return;try{let a=await req('/rest/v1/call_signals?call_id=eq.'+currentCall.id+'&sender_id=neq.'+uid+'&order=id.asc&select=*');for(let s of a){if(seenSignals.has(s.id))continue;seenSignals.add(s.id);if(s.signal_type==='answer'&&!pc.remoteDescription){await pc.setRemoteDescription(new RTCSessionDescription(s.payload));await flushIce()}else if(s.signal_type==='ice'){if(pc.remoteDescription)await pc.addIceCandidate(new RTCIceCandidate(s.payload));else queuedIce.push(s.payload)}}}catch(e){}}
-async function flushIce(){for(let c of queuedIce)try{await pc.addIceCandidate(new RTCIceCandidate(c))}catch(e){} queuedIce=[]}
-async function openGift(){giftModal.classList.remove('hidden');try{let a=await req('/rest/v1/gifts?active=eq.true&order=sort_order&select=*');gifts.innerHTML='';a.forEach(g=>{let b=document.createElement('button');b.className='secondary';b.style='width:100%;margin:6px 0';b.textContent=g.emoji+' '+g.name+' — '+g.price_minutes+' dk';b.onclick=()=>sendGift(g.id);gifts.appendChild(b)})}catch(e){}}
+async function openGift(){giftModal.classList.remove('hidden');try{let a=await req('/rest/v1/gifts?active=eq.true&order=sort_order&select=*');gifts.innerHTML='';a.forEach(g=>{let b=document.createElement('button');b.className='secondary';b.style='width:100%;margin:6px 0';b.textContent=g.emoji+' '+g.name+' — '+g.price_minutes+' dk · $'+(g.price_minutes*0.50).toFixed(2);b.onclick=()=>sendGift(g.id);gifts.appendChild(b)})}catch(e){}}
 function closeGift(){giftModal.classList.add('hidden')}
 async function sendGift(id){try{await rpc('send_gift',{p_creator:currentCreator.id,p_gift:id,p_call:currentCall.id});closeGift();await loadMe();alert('Hediye gönderildi.')}catch(e){alert(e.message)}}
 async function endCall(){if(currentCall)try{await rpc('end_private_call',{p_call:currentCall.id,p_reason:'viewer_ended'})}catch(e){} cleanupCall()}
