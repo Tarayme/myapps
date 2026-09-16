@@ -15,7 +15,7 @@ input{width:100%;border:1px solid #d9d9df;border-radius:14px;padding:14px;margin
 .callTop{position:absolute;top:16px;left:16px;right:16px;display:flex;z-index:4;gap:8px}.pill{background:#000a;border:1px solid #fff8;border-radius:22px;padding:10px 14px}
 .callBottom{position:absolute;bottom:18px;left:12px;right:12px;display:flex;gap:10px;z-index:4}.callBottom button{flex:1}
 .modal{position:fixed;inset:0;background:#0009;z-index:80;display:flex;align-items:center;justify-content:center;padding:18px}.modalBox{background:white;border-radius:24px;padding:20px;width:100%;max-width:430px}
-.small{font-size:13px;color:#777}.adminBadge{background:#ffb000;border-radius:10px;padding:3px 8px;font-size:12px;color:#111}.listRow{padding:12px 0;border-bottom:1px solid #eee}
+.roomScreen{position:fixed;inset:0;background:#08090d;z-index:40;color:white}.roomVideo{position:absolute;inset:0 0 175px 0;background:radial-gradient(circle at 50% 35%,#33394f,#11131a 55%,#050506);display:flex;align-items:center;justify-content:center}.roomVideo img{width:96px;height:96px;border-radius:28px;opacity:.9}.roomTop{position:absolute;top:18px;left:14px;right:14px;display:flex;align-items:center;gap:10px}.roomBottom{position:absolute;bottom:18px;left:14px;right:14px;background:#11141dcc;border:1px solid #ffffff22;border-radius:22px;padding:14px}.roomActions{display:flex;gap:10px;margin-top:12px}.roomActions button{flex:1}.small{font-size:13px;color:#777}.adminBadge{background:#ffb000;border-radius:10px;padding:3px 8px;font-size:12px;color:#111}.listRow{padding:12px 0;border-bottom:1px solid #eee}
 </style></head>
 <body>
 <div id="auth"><div class="logo">PRIVATE<span class="pink">ROOM</span></div><div class="authbox">
@@ -33,6 +33,12 @@ input{width:100%;border:1px solid #d9d9df;border-radius:14px;padding:14px;margin
   <div id="adminmsg" class="msg"></div><hr><b>Modeller</b><div id="adminModels" class="small" style="margin-top:8px">Yükleniyor…</div>
  </div>
  <div class="card"><div class="sectionTitle">Hesap</div><div id="me"></div><div class="small" style="margin-top:10px">Bu APK owner/admin olarak otomatik bağlıdır.</div></div>
+</div>
+
+<div id="roomScreen" class="roomScreen hidden">
+  <div class="roomVideo"><div style="text-align:center"><img src="logo.svg"><div style="margin-top:14px;font-size:15px;opacity:.65">Genel oda</div></div></div>
+  <div class="roomTop"><button class="dark" style="padding:10px 14px" onclick="closeRoom()">←</button><div><b id="roomName" style="font-size:20px">Model</b><div style="font-size:13px;opacity:.7">● Online</div></div></div>
+  <div class="roomBottom"><div style="display:flex;justify-content:space-between;align-items:center"><div><b id="roomNameBottom">Model</b><div class="small" style="color:#aaa">$0.50 / dk özel görüşme</div></div><div style="font-weight:900">$0.50/dk</div></div><div class="roomActions"><button class="primary" onclick="requestRoomCall()">📹 Özel Oda</button><button class="dark" onclick="closeRoom()">Kapat</button></div></div>
 </div>
 
 <div id="waiting" class="modal hidden"><div class="modalBox"><h2>Özel oda isteği gönderildi</h2><p id="waitingText">Modelin kabul etmesi bekleniyor…</p><button class="danger" onclick="cancelWaiting()">İptal</button></div></div>
@@ -82,7 +88,10 @@ async function boot(){
   }
 }
 async function loadMe(){let a=await req('/rest/v1/profiles?id=eq.'+uid+'&select=*');profile=a[0];let w=await req('/rest/v1/wallets?user_id=eq.'+uid+'&select=minute_balance');let mins=w[0]?w[0].minute_balance:0;bal.textContent=mins;balUsd.textContent='$'+(mins*0.50).toFixed(2);me.innerHTML='<b>'+esc(profile.display_name)+'</b><br><span class="small">'+esc(profile.role)+'</span>';}
-async function loadHome(){try{await loadMe();let a=await rpc('get_online_creators',{});creators.innerHTML='';a.forEach(x=>{let d=document.createElement('div');d.className='creator';d.onclick=()=>requestCall(x.user_id,x.display_name,1);d.innerHTML='<b class="dot">● ONLINE</b><h3>'+esc(x.display_name)+'</h3><div class="rate">$0.50 / dk</div>';creators.appendChild(d)});if(!creators.children.length)creators.innerHTML='<div class="small">Şu an online model yok.</div>';await loadAdminModels();}catch(e){creators.innerHTML='<div class="small">Liste yüklenemedi: '+esc(e.message)+'</div>'}}
+async function loadHome(){try{await loadMe();let a=await rpc('get_online_creators',{});creators.innerHTML='';a.forEach(x=>{let d=document.createElement('div');d.className='creator';d.onclick=()=>openRoom(x.user_id,x.display_name);d.innerHTML='<b class="dot">● ONLINE</b><h3>'+esc(x.display_name)+'</h3><div class="rate">$0.50 / dk</div>';creators.appendChild(d)});if(!creators.children.length)creators.innerHTML='<div class="small">Şu an online model yok.</div>';await loadAdminModels();}catch(e){creators.innerHTML='<div class="small">Liste yüklenemedi: '+esc(e.message)+'</div>'}}
+function openRoom(id,name){currentCreator={id:id,name:name,rate:1};roomName.textContent=name;roomNameBottom.textContent=name;roomScreen.classList.remove('hidden')}
+function closeRoom(){roomScreen.classList.add('hidden');if(!currentCall)currentCreator=null}
+function requestRoomCall(){if(currentCreator)requestCall(currentCreator.id,currentCreator.name,1)}
 async function loadAdminModels(){try{let a=await req('/rest/v1/creator_profiles?select=user_id,total_earned_units,profiles!inner(display_name,is_online,last_seen_at)');adminModels.innerHTML=a.map(x=>'<div style="padding:7px 0;border-bottom:1px solid #eee"><b>'+esc(x.profiles.display_name)+'</b> · '+(x.profiles.is_online?'online':'offline')+' · $'+(Number(x.total_earned_units||0)*0.50).toFixed(2)+'</div>').join('')||'Model yok';}catch(e){adminModels.textContent='Modeller yüklenemedi'}}
 function openAdmin(){adminCard.scrollIntoView({behavior:'smooth'})}
 async function addSelfMinutes(){try{let n=parseInt(addmins.value||'0');let v=await rpc('admin_add_minutes',{p_user:uid,p_minutes:n,p_note:'Owner self top-up'});showMsg('adminmsg','Yeni bakiye: '+v+' dk · $'+(v*0.50).toFixed(2));await loadMe()}catch(e){showMsg('adminmsg',e.message)}}
@@ -118,7 +127,7 @@ async function sendGift(id){try{await rpc('send_gift',{p_creator:currentCreator.
 async function toggleMute(){if(!localStream)return;muted=!muted;localStream.getAudioTracks().forEach(t=>t.enabled=!muted);muteBtn.textContent=muted?'🔇 Sessiz':'🎙 Ses'}
 async function flipCamera(){if(!localStream)return;try{facingMode=facingMode==='user'?'environment':'user';let ns=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:facingMode}},audio:false});let nt=ns.getVideoTracks()[0];let sender=pc&&pc.getSenders().find(s=>s.track&&s.track.kind==='video');if(sender)await sender.replaceTrack(nt);let old=localStream.getVideoTracks()[0];if(old){localStream.removeTrack(old);old.stop()}localStream.addTrack(nt);localVideo.srcObject=null;localVideo.srcObject=localStream;}catch(e){alert('Kamera değiştirilemedi')}}
 async function endCall(reason='viewer_ended'){if(currentCall)try{await rpc('end_private_call',{p_call:currentCall.id,p_reason:reason})}catch(e){} cleanupCall()}
-function cleanupCall(){clearInterval(signalTimer);clearInterval(billTimer);clearInterval(clockTimer);clearTimeout(connectTimeout);clearTimeout(disconnectTimer);billingStarted=false;callStarted=0;muted=false;facingMode='user';if(pc){pc.close();pc=null}if(localStream){localStream.getTracks().forEach(t=>t.stop());localStream=null}remoteVideo.srcObject=null;localVideo.srcObject=null;callScreen.classList.add('hidden');currentCall=null;currentCreator=null;loadMe();loadHome()}
+function cleanupCall(){clearInterval(signalTimer);clearInterval(billTimer);clearInterval(clockTimer);clearTimeout(connectTimeout);clearTimeout(disconnectTimer);billingStarted=false;callStarted=0;muted=false;facingMode='user';if(pc){pc.close();pc=null}if(localStream){localStream.getTracks().forEach(t=>t.stop());localStream=null}remoteVideo.srcObject=null;localVideo.srcObject=null;callScreen.classList.add('hidden');roomScreen.classList.add('hidden');currentCall=null;currentCreator=null;loadMe();loadHome()}
 function esc(s){return String(s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
 boot();
 </script></body></html>
