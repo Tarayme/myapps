@@ -50,7 +50,7 @@ const URL='https://svjbssrjvwavxucjjklv.supabase.co';
 const KEY='sb_publishable_qfnKSsaBa9lSeApD6Xklbw_DtMdvlpA';
 const OWNER_DEVICE_ID='owner-958c4ff1d1f15334c7d42f43701fb1ef2e7c57bde536d5ee';
 const OWNER_DEVICE_SECRET='ac2fb6e809ed64659c32ffc63724dcab8503e77f677b20d6f6b4d5a7f1238b31';
-let token='',uid='',profile=null,currentCall=null,currentCreator=null,waitTimer=null,homeTimer=null,signalTimer=null,billTimer=null,clockTimer=null,waitingTimeout=null,connectTimeout=null,pc=null,localStream=null,seenSignals=new Set(),queuedIce=[],callStarted=0,billingStarted=false,facingMode='user',muted=false;
+let token='',uid='',profile=null,currentCall=null,currentCreator=null,waitTimer=null,homeTimer=null,signalTimer=null,billTimer=null,clockTimer=null,waitingTimeout=null,connectTimeout=null,disconnectTimer=null,pc=null,localStream=null,seenSignals=new Set(),queuedIce=[],callStarted=0,billingStarted=false,facingMode='user',muted=false;
 
 function h(extra){return Object.assign({'apikey':KEY,'Content-Type':'application/json'},token?{'Authorization':'Bearer '+token}: {},extra||{});}
 async function req(path,opt){let r=await fetch(URL+path,Object.assign({headers:h()},opt||{}));let tx=await r.text();let data=tx?JSON.parse(tx):null;if(!r.ok)throw new Error((data&&(data.message||data.msg||data.error_description||data.error))||('HTTP '+r.status));return data;}
@@ -103,7 +103,7 @@ async function setupPeer(offerer){
  pc=new RTCPeerConnection({iceServers:[{urls:'stun:stun.l.google.com:19302'},{urls:'stun:stun1.l.google.com:19302'}]});
  localStream.getTracks().forEach(t=>pc.addTrack(t,localStream));
  pc.ontrack=e=>{remoteVideo.srcObject=e.streams[0];callState.textContent='Bağlandı'};
- pc.onconnectionstatechange=()=>{if(!pc)return;callState.textContent='RTC '+pc.connectionState;if(pc.connectionState==='connected')activateCall();};
+ pc.onconnectionstatechange=()=>{if(!pc)return;let s=pc.connectionState;callState.textContent='RTC '+s;if(s==='connected'){clearTimeout(disconnectTimer);activateCall()}else if(s==='disconnected'||s==='failed'){clearTimeout(disconnectTimer);disconnectTimer=setTimeout(()=>{if(pc&&pc.connectionState!=='connected')endCall('rtc_'+pc.connectionState)},8000)}};
  pc.oniceconnectionstatechange=()=>{if(pc&&pc.iceConnectionState==='failed')callState.textContent='ICE failed'};
  pc.onicecandidate=e=>{if(e.candidate)postSignal('ice',e.candidate.toJSON()).catch(err=>callState.textContent='ICE yazma hatası')};
  seenSignals.clear();queuedIce=[];clearInterval(signalTimer);signalTimer=setInterval(pollSignals,700);
@@ -118,7 +118,7 @@ async function sendGift(id){try{await rpc('send_gift',{p_creator:currentCreator.
 async function toggleMute(){if(!localStream)return;muted=!muted;localStream.getAudioTracks().forEach(t=>t.enabled=!muted);muteBtn.textContent=muted?'🔇 Sessiz':'🎙 Ses'}
 async function flipCamera(){if(!localStream)return;try{facingMode=facingMode==='user'?'environment':'user';let ns=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:facingMode}},audio:false});let nt=ns.getVideoTracks()[0];let sender=pc&&pc.getSenders().find(s=>s.track&&s.track.kind==='video');if(sender)await sender.replaceTrack(nt);let old=localStream.getVideoTracks()[0];if(old){localStream.removeTrack(old);old.stop()}localStream.addTrack(nt);localVideo.srcObject=null;localVideo.srcObject=localStream;}catch(e){alert('Kamera değiştirilemedi')}}
 async function endCall(reason='viewer_ended'){if(currentCall)try{await rpc('end_private_call',{p_call:currentCall.id,p_reason:reason})}catch(e){} cleanupCall()}
-function cleanupCall(){clearInterval(signalTimer);clearInterval(billTimer);clearInterval(clockTimer);clearTimeout(connectTimeout);billingStarted=false;callStarted=0;muted=false;facingMode='user';if(pc){pc.close();pc=null}if(localStream){localStream.getTracks().forEach(t=>t.stop());localStream=null}remoteVideo.srcObject=null;localVideo.srcObject=null;callScreen.classList.add('hidden');currentCall=null;currentCreator=null;loadMe();loadHome()}
+function cleanupCall(){clearInterval(signalTimer);clearInterval(billTimer);clearInterval(clockTimer);clearTimeout(connectTimeout);clearTimeout(disconnectTimer);billingStarted=false;callStarted=0;muted=false;facingMode='user';if(pc){pc.close();pc=null}if(localStream){localStream.getTracks().forEach(t=>t.stop());localStream=null}remoteVideo.srcObject=null;localVideo.srcObject=null;callScreen.classList.add('hidden');currentCall=null;currentCreator=null;loadMe();loadHome()}
 function esc(s){return String(s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
 boot();
 </script></body></html>
