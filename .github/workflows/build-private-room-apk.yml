@@ -6,6 +6,11 @@ on:
     paths:
       - 'private-room-android/**'
       - '.github/workflows/build-private-room-apk.yml'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'private-room-android/**'
+      - '.github/workflows/build-private-room-apk.yml'
 
 jobs:
   build:
