@@ -41,7 +41,7 @@ input{width:100%;border:1px solid #d9d9df;border-radius:14px;padding:14px;margin
     <div id="roomPlaceholder" class="roomPlaceholder"><div style="text-align:center"><img src="logo.svg"><div style="margin-top:14px;font-size:15px;opacity:.65">Canlı yayın bağlanıyor…</div></div></div>
     <div id="roomLiveStatus" class="roomStatus">Bağlanıyor…</div>
   </div>
-  <div class="roomTop"><button class="dark" style="padding:10px 14px" onclick="closeRoom()">←</button><div><b id="roomName" style="font-size:20px">Model</b><div style="font-size:13px;opacity:.7">● Public oda</div></div></div>
+  <div class="roomTop"><button class="dark" style="padding:10px 14px" onclick="closeRoom()">←</button><div style="flex:1"><b id="roomName" style="font-size:20px">Model</b><div style="font-size:13px;opacity:.7">● Public oda</div></div><div id="roomViewerCount" class="pill">👁 0</div></div>
   <button class="privateFab" onclick="requestRoomCall()">📹</button>
   <div class="roomBottom"><div style="display:flex;justify-content:space-between;align-items:center"><div><b id="roomNameBottom">Model</b><div class="small" style="color:#aaa">$0.50 / dk özel görüşme</div></div><div style="font-weight:900">$0.50/dk</div></div><div class="roomActions"><button class="primary" onclick="requestRoomCall()">📹 Özel Oda İsteği</button><button class="dark" onclick="closeRoom()">Kapat</button></div></div>
 </div>
@@ -62,7 +62,7 @@ const KEY='sb_publishable_qfnKSsaBa9lSeApD6Xklbw_DtMdvlpA';
 const OWNER_DEVICE_ID='owner-958c4ff1d1f15334c7d42f43701fb1ef2e7c57bde536d5ee';
 const OWNER_DEVICE_SECRET='ac2fb6e809ed64659c32ffc63724dcab8503e77f677b20d6f6b4d5a7f1238b31';
 let token='',uid='',profile=null,currentCall=null,currentCreator=null,waitTimer=null,homeTimer=null,signalTimer=null,billTimer=null,clockTimer=null,waitingTimeout=null,connectTimeout=null,disconnectTimer=null,pc=null,localStream=null,seenSignals=new Set(),queuedIce=[],callStarted=0,billingStarted=false,facingMode='user',muted=false;
-let publicSession=null,publicPc=null,publicSignalTimer=null,publicHeartbeatTimer=null,publicSeenSignals=new Set(),publicQueuedIce=[];
+let publicSession=null,publicPc=null,publicSignalTimer=null,publicHeartbeatTimer=null,publicCountTimer=null,publicSeenSignals=new Set(),publicQueuedIce=[];
 
 function h(extra){return Object.assign({'apikey':KEY,'Content-Type':'application/json'},token?{'Authorization':'Bearer '+token}: {},extra||{});}
 async function req(path,opt){let r=await fetch(URL+path,Object.assign({headers:h()},opt||{}));let tx=await r.text();let data=tx?JSON.parse(tx):null;if(!r.ok)throw new Error((data&&(data.message||data.msg||data.error_description||data.error))||('HTTP '+r.status));return data;}
@@ -97,7 +97,7 @@ async function loadMe(){let a=await req('/rest/v1/profiles?id=eq.'+uid+'&select=
 async function loadHome(){try{await loadMe();let a=await rpc('get_online_creators',{});creators.innerHTML='';a.forEach(x=>{let d=document.createElement('div');d.className='creator';d.onclick=()=>openRoom(x.user_id,x.display_name);d.innerHTML='<b class="dot">● ONLINE</b><h3>'+esc(x.display_name)+'</h3><div class="rate">$0.50 / dk</div>';creators.appendChild(d)});if(!creators.children.length)creators.innerHTML='<div class="small">Şu an online model yok.</div>';await loadAdminModels();}catch(e){creators.innerHTML='<div class="small">Liste yüklenemedi: '+esc(e.message)+'</div>'}}
 async function openRoom(id,name){
   currentCreator={id:id,name:name,rate:1};
-  roomName.textContent=name;roomNameBottom.textContent=name;
+  roomName.textContent=name;roomNameBottom.textContent=name;roomViewerCount.textContent='👁 0';
   roomPublicVideo.srcObject=null;roomPlaceholder.classList.remove('hidden');roomLiveStatus.textContent='Bağlanıyor…';
   roomScreen.classList.remove('hidden');
   try{
@@ -108,8 +108,8 @@ async function openRoom(id,name){
   }
 }
 async function teardownPublicRoom(closeRemote=true){
-  clearInterval(publicSignalTimer);clearInterval(publicHeartbeatTimer);
-  publicSignalTimer=null;publicHeartbeatTimer=null;
+  clearInterval(publicSignalTimer);clearInterval(publicHeartbeatTimer);clearInterval(publicCountTimer);
+  publicSignalTimer=null;publicHeartbeatTimer=null;publicCountTimer=null;
   if(publicPc){publicPc.close();publicPc=null}
   roomPublicVideo.srcObject=null;publicSeenSignals.clear();publicQueuedIce=[];
   let s=publicSession;publicSession=null;
@@ -129,7 +129,10 @@ async function setupPublicViewer(){
   let offer=await publicPc.createOffer();await publicPc.setLocalDescription(offer);await postPublicSignal('offer',offer);
   publicSignalTimer=setInterval(pollPublicSignals,600);
   publicHeartbeatTimer=setInterval(()=>{if(publicSession)rpc('public_room_heartbeat',{p_session:publicSession.id}).catch(()=>{})},12000);
+  await updatePublicViewerCount();
+  publicCountTimer=setInterval(updatePublicViewerCount,4000);
 }
+async function updatePublicViewerCount(){if(!currentCreator)return;try{let n=await rpc('get_public_room_viewer_count',{p_creator:currentCreator.id});roomViewerCount.textContent='👁 '+n}catch(e){}}
 async function postPublicSignal(type,payload){
   if(!publicSession)return;
   await req('/rest/v1/public_room_signals',{method:'POST',headers:h({'Prefer':'return=minimal'}),body:JSON.stringify({session_id:publicSession.id,sender_id:uid,signal_type:type,payload:payload})});
