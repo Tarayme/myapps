@@ -11,7 +11,7 @@ input{width:100%;padding:14px;border:1px solid #ddd;border-radius:14px;margin:6p
 #incoming{position:fixed;inset:0;background:#000b;z-index:70;display:flex;align-items:center;justify-content:center;padding:20px}.incomingBox{background:white;width:100%;border-radius:26px;padding:24px;text-align:center}
 #callScreen{position:fixed;inset:0;background:#000;z-index:80;color:white}.videoBox{position:absolute;inset:0 0 126px 0;background:#111}.videoBox video{width:100%;height:100%;object-fit:cover}.local{position:absolute!important;right:12px;top:12px;width:105px!important;height:150px!important;border-radius:14px;border:2px solid white;z-index:3}
 .callTop{position:absolute;top:16px;left:16px;right:16px;display:flex;gap:8px;z-index:4}.pill{background:#000a;border:1px solid #fff8;border-radius:22px;padding:10px 14px}.callBottom{position:absolute;bottom:18px;left:12px;right:12px;display:flex;gap:10px;z-index:4}.callBottom button{flex:1}
-.ledger{padding:11px 0;border-bottom:1px solid #eee;display:flex;justify-content:space-between}
+.ledger{padding:11px 0;border-bottom:1px solid #eee;display:flex;justify-content:space-between}.supportModal{position:fixed;inset:0;background:#000a;z-index:95;display:flex;align-items:center;justify-content:center;padding:14px}.supportBox{background:white;border-radius:24px;width:100%;max-width:480px;height:78vh;display:flex;flex-direction:column;padding:16px}.supportMessages{flex:1;overflow:auto;background:#f5f6fb;border-radius:16px;padding:10px;margin:10px 0}.bubble{max-width:82%;padding:10px 12px;border-radius:15px;margin:7px 0;white-space:pre-wrap}.mine{margin-left:auto;background:#586bd9;color:white}.theirs{margin-right:auto;background:white;border:1px solid #ddd}.statusTag{display:inline-block;padding:5px 9px;border-radius:10px;background:#eef0f8;font-size:12px}
 </style></head><body>
 <div id="auth"><div class="logo">PRIVATE<span class="pink">ROOM</span> MODEL</div><div class="authbox">
 <div id="loginPanel">
@@ -41,9 +41,25 @@ input{width:100%;padding:14px;border:1px solid #ddd;border-radius:14px;margin:6p
   <div class="metric blue"><div>Kazancınız</div><div id="earn" class="big">$0.00</div></div>
   <div class="metric red"><div>Özel oda süresi</div><div id="duration" class="big">0 dk</div></div>
   <div class="card"><div class="title">Kazanç Detayları</div><div id="ledger"></div></div>
+  <div class="card"><div class="title">Ödeme & Destek</div>
+    <div class="small">Çekilebilir bakiye</div>
+    <div id="availableCash" class="big" style="margin:4px 0 12px">$0.00</div>
+    <input id="payoutUsd" type="number" step="0.50" min="0.50" placeholder="Çekmek istediğin tutar ($)">
+    <button class="primary" style="width:100%" onclick="requestPayout()">Para Çekme Talebi Oluştur</button>
+    <button class="orange" style="width:100%;margin-top:10px" onclick="openSupport()">🎧 Canlı Destek</button>
+    <div id="payoutMsg" class="msg"></div>
+    <div class="small" style="margin-top:10px">Son talepler</div>
+    <div id="payoutList"></div>
+  </div>
  </div>
  <div class="card"><div class="title">Hesap</div><div id="me"></div><button class="danger" style="margin-top:14px" onclick="logoutModel()">Çıkış Yap</button></div>
 </div>
+
+<div id="supportModal" class="supportModal hidden"><div class="supportBox">
+  <div class="row"><h2 style="margin:0;flex:1">Canlı Destek</h2><button class="dark" style="flex:0;padding:9px 13px" onclick="closeSupport()">✕</button></div>
+  <div id="supportMessages" class="supportMessages"></div>
+  <div class="row"><input id="supportInput" style="margin:0" placeholder="Mesajını yaz…"><button class="secondary" style="flex:0" onclick="sendSupportMessage()">Gönder</button></div>
+</div></div>
 
 <div id="incoming" class="hidden"><div class="incomingBox"><h1>📹 Özel Oda</h1><h2 id="caller">Bir kullanıcı arıyor</h2><p id="callRate"></p><div class="row"><button class="danger" onclick="respond(false)">Reddet</button><button class="primary" onclick="respond(true)">Kabul Et</button></div></div></div>
 
@@ -58,7 +74,7 @@ const URL='https://svjbssrjvwavxucjjklv.supabase.co';
 const KEY='sb_publishable_qfnKSsaBa9lSeApD6Xklbw_DtMdvlpA';
 let token=localStorage.getItem('token')||'',uid=localStorage.getItem('uid')||'',profile=null,creator=null;
 let pollTimer=null,refreshTimer=null,authRefreshTimer=null,heartbeatTimer=null,incomingWatchTimer=null,ringTimer=null,currentCall=null,pc=null,localStream=null,signalTimer=null,billTimer=null,clockTimer=null,connectTimeout=null,callStarted=0,billingStarted=false,facingMode='user',muted=false,seenSignals=new Set(),queuedIce=[];
-let publicStream=null,publicRoomPollTimer=null,publicPeers=new Map(),publicSeenSignals=new Map(),publicQueuedIce=new Map();
+let publicStream=null,publicRoomPollTimer=null,publicPeers=new Map(),publicSeenSignals=new Map(),publicQueuedIce=new Map();let supportThread=null,supportPollTimer=null;
 
 function h(extra){return Object.assign({'apikey':KEY,'Content-Type':'application/json'},token?{'Authorization':'Bearer '+token}: {},extra||{});}
 async function req(path,opt){let r=await fetch(URL+path,Object.assign({headers:h()},opt||{}));let tx=await r.text();let data=tx?JSON.parse(tx):null;if(!r.ok)throw new Error((data&&(data.message||data.error_description||data.error))||('HTTP '+r.status));return data;}
@@ -237,6 +253,7 @@ async function logoutModel(){
   clearInterval(heartbeatTimer);
   clearInterval(publicRoomPollTimer);
   clearInterval(incomingWatchTimer);
+  clearInterval(supportPollTimer);
   stopRinging();
   stopPublicBroadcast();
   clearSession();
@@ -320,7 +337,54 @@ async function pollPublicRooms(){
     for(let [sid,p] of publicPeers){if(!active.has(sid)){try{p.close()}catch(e){}publicPeers.delete(sid);publicSeenSignals.delete(sid);publicQueuedIce.delete(sid)}}
   }catch(e){}
 }
-async function loadStats(){if(!profile||profile.role!=='creator')return;try{let c=await req('/rest/v1/creator_profiles?user_id=eq.'+uid+'&select=*');creator=c[0];earn.textContent='$'+((creator?creator.total_earned_units:0)*0.50).toFixed(2);let calls=await req('/rest/v1/private_calls?creator_id=eq.'+uid+'&state=eq.ended&select=billed_seconds');let sec=calls.reduce((a,x)=>a+(x.billed_seconds||0),0);duration.textContent=Math.floor(sec/60)+' dk '+(sec%60)+' sn';let l=await req('/rest/v1/earning_ledger?creator_id=eq.'+uid+'&order=created_at.desc&limit=20&select=*');ledger.innerHTML='';l.forEach(x=>{let d=document.createElement('div');d.className='ledger';d.innerHTML='<span>'+esc(x.kind==='gift'?'🎁 '+(x.detail||'Hediye'):'📹 Özel Oda')+'</span><b>+$'+(x.units*0.50).toFixed(2)+'</b>';ledger.appendChild(d)});if(!l.length)ledger.innerHTML='<span class="small">Henüz kazanç yok.</span>'}catch(e){}}
+async function loadStats(){if(!profile||profile.role!=='creator')return;try{let c=await req('/rest/v1/creator_profiles?user_id=eq.'+uid+'&select=*');creator=c[0];earn.textContent='$'+((creator?creator.total_earned_units:0)*0.50).toFixed(2);let calls=await req('/rest/v1/private_calls?creator_id=eq.'+uid+'&state=eq.ended&select=billed_seconds');let sec=calls.reduce((a,x)=>a+(x.billed_seconds||0),0);duration.textContent=Math.floor(sec/60)+' dk '+(sec%60)+' sn';let l=await req('/rest/v1/earning_ledger?creator_id=eq.'+uid+'&order=created_at.desc&limit=20&select=*');ledger.innerHTML='';l.forEach(x=>{let d=document.createElement('div');d.className='ledger';d.innerHTML='<span>'+esc(x.kind==='gift'?'🎁 '+(x.detail||'Hediye'):'📹 Özel Oda')+'</span><b>+$'+(x.units*0.50).toFixed(2)+'</b>';ledger.appendChild(d)});if(!l.length)ledger.innerHTML='<span class="small">Henüz kazanç yok.</span>';await loadPayouts()}catch(e){}}
+
+async function loadPayouts(){
+  try{
+    let units=await rpc('get_creator_available_units',{});
+    availableCash.textContent='$'+(Number(units||0)*0.50).toFixed(2);
+    let a=await req('/rest/v1/payout_requests?creator_id=eq.'+uid+'&order=requested_at.desc&limit=8&select=*');
+    payoutList.innerHTML=a.map(x=>'<div class="ledger"><span>$'+Number(x.usd_amount).toFixed(2)+' <span class="statusTag">'+esc(x.status)+'</span></span><span>'+new Date(x.requested_at).toLocaleDateString()+'</span></div>').join('')||'<span class="small">Henüz talep yok.</span>';
+  }catch(e){}
+}
+async function requestPayout(){
+  try{
+    let usd=Number(payoutUsd.value||0);
+    let units=usd/0.50;
+    if(usd<=0||Math.abs(units-Math.round(units))>0.001)throw new Error('Tutar $0.50 katı olmalı.');
+    let x=await rpc('request_payout',{p_units:Math.round(units)});
+    payoutMsg.textContent='$'+Number(x.usd_amount).toFixed(2)+' ödeme talebi oluşturuldu.';
+    payoutUsd.value='';
+    await loadPayouts();
+  }catch(e){
+    payoutMsg.textContent=String(e.message).includes('insufficient_earnings')?'Kazanç bakiyesi yetersiz.':e.message;
+  }
+}
+async function openSupport(){
+  try{
+    supportThread=await rpc('get_or_create_support_thread',{});
+    supportModal.classList.remove('hidden');
+    await loadSupportMessages();
+    clearInterval(supportPollTimer);
+    supportPollTimer=setInterval(loadSupportMessages,1500);
+  }catch(e){alert(e.message)}
+}
+function closeSupport(){supportModal.classList.add('hidden');clearInterval(supportPollTimer);supportPollTimer=null}
+async function loadSupportMessages(){
+  if(!supportThread)return;
+  try{
+    let a=await req('/rest/v1/support_messages?thread_id=eq.'+supportThread.id+'&order=id.asc&select=*');
+    supportMessages.innerHTML=a.map(x=>'<div class="bubble '+(x.sender_id===uid?'mine':'theirs')+'">'+esc(x.body)+'</div>').join('')||'<div class="small">Canlı desteğe mesaj yazabilirsin.</div>';
+    supportMessages.scrollTop=supportMessages.scrollHeight;
+  }catch(e){}
+}
+async function sendSupportMessage(){
+  let body=supportInput.value.trim();if(!body||!supportThread)return;
+  try{
+    await req('/rest/v1/support_messages',{method:'POST',headers:h({'Prefer':'return=minimal'}),body:JSON.stringify({thread_id:supportThread.id,sender_id:uid,body:body})});
+    supportInput.value='';await loadSupportMessages();
+  }catch(e){alert(e.message)}
+}
 async function pollCalls(){if(!profile||profile.role!=='creator'||!profile.is_online||currentCall)return;try{let a=await req('/rest/v1/private_calls?creator_id=eq.'+uid+'&state=eq.requested&order=requested_at.asc&limit=1&select=*');let x=a[0];if(x&&x.request_expires_at&&new Date(x.request_expires_at)<=new Date())return;if(x){currentCall=x;let p=await req('/rest/v1/profiles?id=eq.'+currentCall.viewer_id+'&select=display_name');caller.textContent=(p[0]?p[0].display_name:'Kullanıcı')+' sizi arıyor';callRate.textContent='$0.50 / dk';incoming.classList.remove('hidden');startRinging();clearInterval(incomingWatchTimer);incomingWatchTimer=setInterval(watchIncoming,1000)}}catch(e){}}
 function startRinging(){stopRinging();try{navigator.vibrate&&navigator.vibrate([250,150,250]);}catch(e){}ringTimer=setInterval(()=>{try{let A=window.AudioContext||window.webkitAudioContext;if(A){let a=new A(),o=a.createOscillator(),g=a.createGain();o.frequency.value=620;g.gain.value=.05;o.connect(g);g.connect(a.destination);o.start();o.stop(a.currentTime+.18)}}catch(e){}},1200)}
 function stopRinging(){clearInterval(ringTimer);ringTimer=null;try{navigator.vibrate&&navigator.vibrate(0)}catch(e){}}
