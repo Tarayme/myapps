@@ -100,7 +100,7 @@ async function setupPeer(offerer){
  localStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'user'},audio:true});
  localVideo.srcObject=localStream;
  callState.textContent='Sinyal hazırlanıyor';
- pc=new RTCPeerConnection({iceServers:[{urls:'stun:stun.l.google.com:19302'},{urls:'stun:stun1.l.google.com:19302'}]});
+ let rtc={iceServers:[{urls:['stun:stun.l.google.com:19302','stun:stun1.l.google.com:19302']}]};try{let x=await rpc('get_rtc_config',{});if(x&&x.iceServers)rtc=x}catch(e){}pc=new RTCPeerConnection(rtc);
  localStream.getTracks().forEach(t=>pc.addTrack(t,localStream));
  pc.ontrack=e=>{remoteVideo.srcObject=e.streams[0];callState.textContent='Bağlandı'};
  pc.onconnectionstatechange=()=>{if(!pc)return;let s=pc.connectionState;callState.textContent='RTC '+s;if(s==='connected'){clearTimeout(disconnectTimer);activateCall()}else if(s==='disconnected'||s==='failed'){clearTimeout(disconnectTimer);disconnectTimer=setTimeout(()=>{if(pc&&pc.connectionState!=='connected')endCall('rtc_'+pc.connectionState)},8000)}};
