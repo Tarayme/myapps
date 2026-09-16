@@ -1,0 +1,1 @@
+Trigger v0.5.0 build: model registration and public room streaming.
